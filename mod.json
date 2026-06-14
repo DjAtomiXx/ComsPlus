@@ -1,0 +1,90 @@
+{
+  "geode": "5.7.1",
+  "gd": {
+    "win": "2.2081",
+    "android": "2.2081"
+  },
+  "id": "exploited.comsplus",
+  "name": "ComsPlus",
+  "version": "1.0.0",
+  "developer": "Exploited",
+  "description": "Local privacy display names and Globed-backed ComsPlus chat.",
+  "dependencies": {
+    "dankmeme.globed2": {
+      "version": ">=2.2.0",
+      "required": false
+    }
+  },
+  "settings": {
+    "privacy-title": {
+      "type": "title",
+      "name": "Privacy"
+    },
+    "privacy-enabled": {
+      "type": "bool",
+      "name": "Use fake name locally",
+      "description": "Replaces your own visible name locally where ComsPlus can safely identify it.",
+      "default": false
+    },
+    "fake-name": {
+      "type": "string",
+      "name": "Fake name",
+      "description": "Local display name. This does not change your Geometry Dash or Globed account.",
+      "default": "ComsPlayer"
+    },
+    "chat-title": {
+      "type": "title",
+      "name": "Chat"
+    },
+    "chat-enabled": {
+      "type": "bool",
+      "name": "Enable ComsPlus chat",
+      "description": "Shows the in-level ComsPlus chat overlay when Globed is available.",
+      "default": true
+    },
+    "chat-name-mode": {
+      "type": "string",
+      "name": "Chat display name",
+      "description": "Auto uses the fake name only when local privacy is enabled.",
+      "default": "auto",
+      "one-of": ["auto", "real", "fake"]
+    },
+    "chat-opacity": {
+      "type": "float",
+      "name": "Chat opacity",
+      "default": 0.78,
+      "min": 0.2,
+      "max": 1,
+      "control": {
+        "slider": true,
+        "slider-step": 0.02,
+        "input": false
+      }
+    },
+    "send-cooldown-ms": {
+      "type": "int",
+      "name": "Send cooldown",
+      "description": "Minimum delay between outgoing chat messages in milliseconds.",
+      "default": 1500,
+      "min": 500,
+      "max": 10000,
+      "control": {
+        "slider": true,
+        "slider-step": 100,
+        "input": true
+      }
+    },
+    "max-chat-messages": {
+      "type": "int",
+      "name": "Message history",
+      "default": 8,
+      "min": 3,
+      "max": 20,
+      "control": {
+        "slider": true,
+        "slider-step": 1,
+        "input": false
+      }
+    }
+  }
+}

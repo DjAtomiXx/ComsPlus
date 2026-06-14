@@ -1,0 +1,89 @@
+#pragma once
+
+#include "../../util/singleton.hpp"
+#include "../../core/net/MessageListener.hpp"
+#include "../../core/data/UserRole.hpp"
+#include "../../core/data/Event.hpp"
+#include "../../core/data/UserPermissions.hpp"
+#include "../../core/data/SpecialUserData.hpp"
+#include "../../core/data/FeaturedLevel.hpp"
+#include "ConnectionState.hpp"
+
+#include <asp/time/Duration.hpp>
+#include <memory>
+
+namespace globed {
+
+class NetworkManagerImpl;
+struct EventOptions;
+
+class GLOBED_DLL NetworkManager : public SingletonBase<NetworkManager> {
+public:
+    // Connect to the central server at the given URL.
+    // See qunet's documentation for the URL format.
+    geode::Result<> connectCentral(std::string_view url);
+    void disconnectCentral();
+
+    ConnectionState getConnectionState();
+
+    /// Returns whether the client is connected and authenticated with the central server
+    bool isConnected() const;
+
+    /// Returns the average latency to the game server, or 0 if not connected
+    asp::time::Duration getGamePing();
+    /// Returns the average latency to the central server, or 0 if not connected
+    asp::time::Duration getCentralPing();
+
+    /// Returns the tickrate to the connected game server, or 0 if not connected
+    uint32_t getGameTickrate();
+
+    std::vector<UserRole> getAllRoles();
+    std::vector<UserRole> getUserRoles();
+    std::vector<uint8_t> getUserRoleIds();
+    std::optional<UserRole> getUserHighestRole();
+    std::optional<UserRole> findRole(uint8_t roleId);
+    std::optional<UserRole> findRole(std::string_view roleId);
+    bool isModerator();
+    bool isAuthorizedModerator();
+    UserPermissions getUserPermissions();
+    std::optional<SpecialUserData> getOwnSpecialData();
+
+    /// Force the client to resend user icons to the connected server. Does nothing if not connected.
+    void invalidateIcons();
+    /// Force the client to resend the friend list to the connected server. Does nothing if not connected.
+    void invalidateFriendList();
+
+    /// Get the ID of the current featured level on this server
+    std::optional<FeaturedLevelMeta> getFeaturedLevel();
+    bool hasViewedFeaturedLevel();
+    void setViewedFeaturedLevel();
+
+    void sendQuickChat(uint32_t id);
+
+    // Listeners
+
+    // threadSafe = true means event will be invoked earlier and on the arc thread
+    template <typename T, typename F>
+    [[nodiscard("listen returns a listener that must be kept alive to receive messages")]]
+    MessageListener<T> listen(F&& callback, int priority = 0, bool threadSafe = false) {
+        return MessageEvent<T>(threadSafe).listen(std::forward<F>(callback), priority);
+    }
+
+    template <typename T, typename F>
+    geode::ListenerHandle* listenGlobal(F&& callback, int priority = 0, bool threadSafe = false) {
+        return MessageEvent<T>(threadSafe).listen(std::forward<F>(callback), priority).leak();
+    }
+
+    static cocos2d::ccColor3B latencyToColor(uint64_t ms);
+
+private:
+    friend class SingletonBase;
+    friend class NetworkManagerImpl;
+
+    std::unique_ptr<NetworkManagerImpl> m_impl;
+
+    NetworkManager();
+    ~NetworkManager();
+};
+
+}

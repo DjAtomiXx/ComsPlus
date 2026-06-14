@@ -1,0 +1,6 @@
+/.geode-sdk/
+/.profiles/
+/build*/
+/https:/
+/geode-deps/
+*.geode

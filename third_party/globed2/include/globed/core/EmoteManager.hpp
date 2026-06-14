@@ -1,0 +1,38 @@
+#pragma once
+
+#include "../util/singleton.hpp"
+#include "../core/game/RemotePlayer.hpp"
+#include "../audio/sound/PlayerSound.hpp"
+
+namespace globed {
+
+class GLOBED_DLL EmoteManager : public SingletonBase<EmoteManager> {
+public:
+    void registerEmote(uint32_t id, std::string name);
+    void registerSfx(uint32_t id, const std::filesystem::path& name);
+
+    cocos2d::CCSprite* createEmote(uint32_t id);
+    cocos2d::CCSprite* createFavoriteEmote(uint32_t id);
+
+    /// Returns the favorite emote by given index (from 0 to 7). Zero if not set.
+    uint32_t getFavoriteEmote(uint32_t idx);
+
+    std::unordered_map<uint32_t, std::string>& getEmotes();
+    std::vector<uint32_t>& getSortedEmoteIds();
+
+    /// Plays the emote SFX, returning a PlayerSound if player is non null
+    /// otherwise returns a Sound and plays it globally
+    std::shared_ptr<Sound> playEmoteSfx(uint32_t id, std::shared_ptr<RemotePlayer> player, bool force = false);
+    bool hasSfx(uint32_t id);
+
+protected:
+    std::unordered_map<uint32_t, std::string> m_emoteNames;
+    std::unordered_map<uint32_t, std::string> m_sfxPaths;
+    std::vector<uint32_t> m_sortedEmoteIds;
+
+    friend class SingletonBase;
+    EmoteManager() = default;
+    ~EmoteManager() = default;
+};
+
+}

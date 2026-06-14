@@ -1,0 +1,19 @@
+#pragma once
+#include <stdint.h>
+
+namespace globed {
+
+enum class FeatureTier : uint8_t {
+    Featured = 0,
+    Epic = 1,
+    Outstanding = 2,
+};
+
+struct FeaturedLevelMeta {
+    int levelId;
+    int edition;
+    FeatureTier rateTier;
+    uint64_t featuredAt;
+};
+
+}
