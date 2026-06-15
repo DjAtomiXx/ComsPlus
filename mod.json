@@ -76,10 +76,7 @@
       "type": "keybind",
       "name": "Open chat",
       "description": "Keyboard shortcut for opening ComsPlus chat on desktop.",
-      "default": {
-        "win": "C",
-        "android": []
-      },
+      "default": "C",
       "category": "gameplay",
       "allow-in-text-inputs": false
     },

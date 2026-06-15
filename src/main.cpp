@@ -13,6 +13,9 @@
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/ProfilePage.hpp>
+#include <Geode/utils/Keyboard.hpp>
+
+#include <vector>
 
 using namespace geode::prelude;
 
@@ -30,6 +33,44 @@ void applyPrivacyTo(CCNode* node) {
     }
 }
 
+#ifndef GEODE_IS_ANDROID
+std::vector<Keybind> openChatKeybinds() {
+    auto bindings = Mod::get()->getSettingValue<std::vector<Keybind>>("open-chat-keybind");
+    if (bindings.empty()) {
+        bindings.emplace_back(KEY_C, KeyboardModifier::None);
+    }
+    return bindings;
+}
+
+bool isOpenChatKey(KeyboardInputData const& data) {
+    if (data.action != KeyboardInputData::Action::Press) return false;
+    if (CCIMEDispatcher::sharedDispatcher()->hasDelegate()) return false;
+
+    auto pressed = Keybind(data.key, data.modifiers);
+    for (auto const& bind : openChatKeybinds()) {
+        if (bind == pressed) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ensureChatOverlay() {
+    if (comsplus::activeChatOverlay()) return true;
+
+    auto gm = GameManager::get();
+    if (!gm || !gm->m_playLayer) return false;
+
+    auto scene = CCDirector::sharedDirector()->getRunningScene();
+    auto parent = scene ? static_cast<CCNode*>(scene) : static_cast<CCNode*>(gm->m_playLayer);
+    if (auto overlay = comsplus::ComsPlusChatOverlay::create()) {
+        parent->addChild(overlay, 100000);
+        return true;
+    }
+    return false;
+}
+#endif
+
 } // namespace
 
 $execute {
@@ -37,13 +78,16 @@ $execute {
     comsplus::GlobedBridge::get().initialize();
 
 #ifndef GEODE_IS_ANDROID
-    listenForKeybindSettingPresses("open-chat-keybind", [](Keybind const&, bool down, bool repeat, double) {
-        if (!down || repeat || !comsplus::readSettings().chatEnabled) {
+    KeyboardInputEvent().listen([](KeyboardInputData& data) {
+        if (!comsplus::readSettings().chatEnabled || !isOpenChatKey(data)) {
+            return ListenerResult::Propagate;
+        }
+        if (!ensureChatOverlay()) {
             return ListenerResult::Propagate;
         }
         comsplus::toggleActiveChatOverlay();
         return ListenerResult::Stop;
-    });
+    }).leak();
 #endif
 }
 
@@ -140,6 +184,11 @@ class $modify(ComsPlusPauseLayer, PauseLayer) {
 };
 
 class $modify(ComsPlusBMFontLabel, CCLabelBMFont) {
+    bool initWithString(char const* text, char const* fntFile, float width, CCTextAlignment alignment, CCPoint imageOffset) {
+        auto spoofed = comsplus::privacySpoofText(text ? text : "");
+        return CCLabelBMFont::initWithString(spoofed.c_str(), fntFile, width, alignment, imageOffset);
+    }
+
     void setString(char const* text) {
         auto spoofed = comsplus::privacySpoofText(text ? text : "");
         CCLabelBMFont::setString(spoofed.c_str());
@@ -161,6 +210,26 @@ class $modify(ComsPlusBMFontLabel, CCLabelBMFont) {
 };
 
 class $modify(ComsPlusTTFLabel, CCLabelTTF) {
+    bool initWithString(char const* text, char const* fontName, float fontSize) {
+        auto spoofed = comsplus::privacySpoofText(text ? text : "");
+        return CCLabelTTF::initWithString(spoofed.c_str(), fontName, fontSize);
+    }
+
+    bool initWithString(char const* text, char const* fontName, float fontSize, CCSize const& dimensions, CCTextAlignment alignment) {
+        auto spoofed = comsplus::privacySpoofText(text ? text : "");
+        return CCLabelTTF::initWithString(spoofed.c_str(), fontName, fontSize, dimensions, alignment);
+    }
+
+    bool initWithString(char const* text, char const* fontName, float fontSize, CCSize const& dimensions, CCTextAlignment hAlignment, CCVerticalTextAlignment vAlignment) {
+        auto spoofed = comsplus::privacySpoofText(text ? text : "");
+        return CCLabelTTF::initWithString(spoofed.c_str(), fontName, fontSize, dimensions, hAlignment, vAlignment);
+    }
+
+    bool initWithStringAndTextDefinition(char const* text, ccFontDefinition& textDefinition) {
+        auto spoofed = comsplus::privacySpoofText(text ? text : "");
+        return CCLabelTTF::initWithStringAndTextDefinition(spoofed.c_str(), textDefinition);
+    }
+
     void setString(char const* text) {
         auto spoofed = comsplus::privacySpoofText(text ? text : "");
         CCLabelTTF::setString(spoofed.c_str());

@@ -5,17 +5,32 @@
 
 #include <Geode/Bindings.hpp>
 
+#include <algorithm>
+#include <cctype>
+
 using namespace geode::prelude;
 
 namespace comsplus {
 namespace {
 
+std::string lowercaseAscii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
+
 std::string replaceAll(std::string text, std::string const& needle, std::string const& replacement) {
     if (needle.empty() || needle == replacement) return text;
 
+    auto lowerText = lowercaseAscii(text);
+    auto lowerNeedle = lowercaseAscii(needle);
+    auto lowerReplacement = lowercaseAscii(replacement);
+
     std::size_t pos = 0;
-    while ((pos = text.find(needle, pos)) != std::string::npos) {
+    while ((pos = lowerText.find(lowerNeedle, pos)) != std::string::npos) {
         text.replace(pos, needle.size(), replacement);
+        lowerText.replace(pos, lowerNeedle.size(), lowerReplacement);
         pos += replacement.size();
     }
     return text;
