@@ -1,12 +1,38 @@
 #include "PrivacyNames.hpp"
 
 #include "ChatCore.hpp"
+#include "ComsPlusSettings.hpp"
 
 #include <Geode/Bindings.hpp>
 
 using namespace geode::prelude;
 
 namespace comsplus {
+namespace {
+
+std::string replaceAll(std::string text, std::string const& needle, std::string const& replacement) {
+    if (needle.empty() || needle == replacement) return text;
+
+    std::size_t pos = 0;
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
+        text.replace(pos, needle.size(), replacement);
+        pos += replacement.size();
+    }
+    return text;
+}
+
+} // namespace
+
+std::string privacySpoofText(std::string const& input) {
+    auto settings = readSettings();
+    if (!settings.privacyEnabled) return input;
+
+    auto real = sanitizeName(localRealName());
+    auto fake = sanitizeName(settings.fakeName);
+    if (real.size() < 3 || fake.empty() || real == fake) return input;
+
+    return replaceAll(input, real, fake);
+}
 
 int replaceOwnNameLabels(CCNode* root, std::string const& realName, std::string const& fakeName) {
     if (!root) return 0;
@@ -18,13 +44,17 @@ int replaceOwnNameLabels(CCNode* root, std::string const& realName, std::string 
     int replaced = 0;
 
     if (auto label = typeinfo_cast<CCLabelBMFont*>(root)) {
-        if (std::string(label->getString()) == cleanReal) {
-            label->setString(cleanFake.c_str());
+        auto current = std::string(label->getString());
+        auto spoofed = replaceAll(current, cleanReal, cleanFake);
+        if (spoofed != current) {
+            label->setString(spoofed.c_str());
             ++replaced;
         }
     } else if (auto label = typeinfo_cast<CCLabelTTF*>(root)) {
-        if (std::string(label->getString()) == cleanReal) {
-            label->setString(cleanFake.c_str());
+        auto current = std::string(label->getString());
+        auto spoofed = replaceAll(current, cleanReal, cleanFake);
+        if (spoofed != current) {
+            label->setString(spoofed.c_str());
             ++replaced;
         }
     }

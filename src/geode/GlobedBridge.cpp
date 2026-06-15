@@ -109,6 +109,8 @@ bool GlobedBridge::sendChat(ChatMessage const& message) {
     auto payload = encodePayload(message);
     if (!decodePayload(payload).has_value()) return false;
 
+    g_seenMessages.insert(message.messageId);
+
     globed::EventOptions options;
     options.server = globed::EventServer::Game;
     options.reliable = true;
