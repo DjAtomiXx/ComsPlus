@@ -50,6 +50,7 @@ int main() {
     auto encoded = encodePayload(message);
     auto decoded = decodePayload(encoded);
     CHECK(decoded.has_value());
+    CHECK(decoded->kind == ChatMessageKind::User);
     CHECK(decoded->protocolVersion == 1);
     CHECK(decoded->messageId == "abc");
     CHECK(decoded->accountId == 42);
@@ -57,6 +58,18 @@ int main() {
     CHECK(decoded->iconData == "cube:1:2:3");
     CHECK(decoded->text == "hello");
     CHECK(decoded->timestamp == 1234);
+
+    ChatMessage systemMessage{1, "joined", 42, "Hidden", "", "joined the chat from Drillbit", 1235, ChatMessageKind::System};
+    auto encodedSystem = encodePayload(systemMessage);
+    auto decodedSystem = decodePayload(encodedSystem);
+    CHECK(decodedSystem.has_value());
+    CHECK(decodedSystem->kind == ChatMessageKind::System);
+    CHECK(decodedSystem->displayName == "Hidden");
+    CHECK(decodedSystem->text == "joined the chat from Drillbit");
+
+    auto legacyDecoded = decodePayload("{\"v\":1,\"id\":\"legacy\",\"aid\":42,\"name\":\"Hidden\",\"icon\":\"cube:1\",\"text\":\"hello\",\"ts\":1236}");
+    CHECK(legacyDecoded.has_value());
+    CHECK(legacyDecoded->kind == ChatMessageKind::User);
 
     CHECK(!decodePayload("{\"v\":2,\"id\":\"abc\"}").has_value());
     CHECK(!decodePayload("not-json").has_value());

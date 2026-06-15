@@ -43,12 +43,16 @@ ComsPlusSettings readSettings() {
     settings.fakeName = settingOr<std::string>("fake-name", settings.fakeName);
     settings.chatNameMode = parseMode(settingOr<std::string>("chat-name-mode", "auto"));
     settings.chatOpacity = static_cast<float>(settingOr<double>("chat-opacity", settings.chatOpacity));
+    settings.desktopPanelWidth = static_cast<float>(settingOr<double>("desktop-panel-width", settings.desktopPanelWidth));
+    settings.desktopPanelHeight = static_cast<float>(settingOr<double>("desktop-panel-height", settings.desktopPanelHeight));
     settings.bubbleOpacity = static_cast<float>(settingOr<double>("bubble-opacity", settings.bubbleOpacity));
     settings.bubbleSize = static_cast<float>(settingOr<double>("bubble-size", settings.bubbleSize));
     settings.hideBubbleInMainMenu = settingOr<bool>("hide-bubble-main-menu", settings.hideBubbleInMainMenu);
     settings.sendCooldownMs = static_cast<int>(settingOr<int64_t>("send-cooldown-ms", settings.sendCooldownMs));
     settings.maxChatMessages = static_cast<int>(settingOr<int64_t>("max-chat-messages", settings.maxChatMessages));
     settings.chatOpacity = std::clamp(settings.chatOpacity, 0.2f, 1.0f);
+    settings.desktopPanelWidth = std::clamp(settings.desktopPanelWidth, 280.0f, 520.0f);
+    settings.desktopPanelHeight = std::clamp(settings.desktopPanelHeight, 150.0f, 300.0f);
     settings.bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
     settings.bubbleSize = std::clamp(settings.bubbleSize, 34.0f, 72.0f);
     settings.sendCooldownMs = std::clamp(settings.sendCooldownMs, 500, 10000);

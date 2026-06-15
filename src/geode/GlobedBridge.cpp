@@ -19,6 +19,7 @@ namespace comsplus {
 namespace {
 
 constexpr char const* kEventId = "exploited.comsplus/chat";
+constexpr char const* kMinGlobedVersion = "2.1.4";
 std::set<std::string> g_seenMessages;
 
 #if COMSPLUS_WITH_GLOBED
@@ -77,7 +78,7 @@ void GlobedBridge::initialize() {
 
 bool GlobedBridge::isAvailable() const {
 #if COMSPLUS_WITH_GLOBED
-    return globed::api::available() && globed::api::isAtLeast("2.2.0");
+    return globed::api::available() && globed::api::isAtLeast(kMinGlobedVersion);
 #else
     return false;
 #endif
@@ -94,7 +95,7 @@ bool GlobedBridge::isConnected() const {
 std::string GlobedBridge::statusText() const {
 #if COMSPLUS_WITH_GLOBED
     if (!globed::api::available()) return "Globed not loaded";
-    if (!globed::api::isAtLeast("2.2.0")) return "Globed 2.2.0+ required";
+    if (!globed::api::isAtLeast(kMinGlobedVersion)) return "Globed 2.1.4+ required";
     if (!globed::api::net::isConnected()) return "Globed offline";
     if (!globed::api::game::isActive()) return "Join a Globed level";
     return "Globed connected";

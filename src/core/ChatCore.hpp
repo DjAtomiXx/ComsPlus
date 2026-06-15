@@ -12,6 +12,11 @@ enum class ChatNameMode {
     Fake
 };
 
+enum class ChatMessageKind {
+    User,
+    System
+};
+
 struct DisplayNameSettings {
     bool privacyEnabled = false;
     std::string fakeName;
@@ -26,6 +31,7 @@ struct ChatMessage {
     std::string iconData;
     std::string text;
     std::int64_t timestamp = 0;
+    ChatMessageKind kind = ChatMessageKind::User;
 };
 
 class RateLimiter {

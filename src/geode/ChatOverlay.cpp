@@ -46,6 +46,13 @@ CCSize winSize() {
 
 CCSize panelSize() {
     auto win = winSize();
+    auto settings = readSettings();
+    if (!isMobileLayout()) {
+        return {
+            std::min(settings.desktopPanelWidth, win.width - 24.0f),
+            std::min(settings.desktopPanelHeight, win.height - 34.0f)
+        };
+    }
     return {
         std::min(336.0f, win.width - 24.0f),
         std::min(188.0f, win.height - 34.0f)
@@ -121,6 +128,18 @@ CCPoint defaultPanelPosition() {
     auto win = winSize();
     auto size = panelSize();
     return {(win.width - size.width) * 0.5f, (win.height - size.height) * 0.5f};
+}
+
+std::string currentLevelName() {
+    if (auto gm = GameManager::get()) {
+        if (gm->m_playLayer && gm->m_playLayer->m_level) {
+            auto name = sanitizeName(std::string(gm->m_playLayer->m_level->m_levelName));
+            if (!name.empty()) {
+                return name;
+            }
+        }
+    }
+    return "this level";
 }
 
 } // namespace
@@ -231,48 +250,58 @@ void ComsPlusChatOverlay::buildPanel() {
     auto size = panelSize();
     auto settings = readSettings();
     auto bgAlpha = static_cast<GLubyte>(std::clamp(settings.chatOpacity, 0.2f, 1.0f) * 228.0f);
+    m_lastPanelWidth = size.width;
+    m_lastPanelHeight = size.height;
+    m_lastChatOpacity = settings.chatOpacity;
 
     m_panelRoot = CCNode::create();
     m_panelRoot->setID("comsplus-chat-panel"_spr);
     m_panelRoot->setContentSize(size);
     this->addChild(m_panelRoot, 5);
 
-    m_panelRoot->addChild(rect({230, 20, 36, 56}, {size.width + 12.0f, size.height + 12.0f}, {-6.0f, -6.0f}));
-    m_panelRoot->addChild(rect({7, 8, 13, bgAlpha}, size, {0.0f, 0.0f}));
-    m_panelRoot->addChild(rect({80, 7, 15, 92}, {size.width, 30.0f}, {0.0f, size.height - 30.0f}));
-    addBorder(m_panelRoot, size, {255, 40, 60, 235}, 2.0f);
+    m_panelRoot->addChild(rect({255, 24, 50, 34}, {size.width + 10.0f, size.height + 10.0f}, {-5.0f, -5.0f}));
+    m_panelRoot->addChild(rect({12, 6, 11, bgAlpha}, size, {0.0f, 0.0f}));
+    m_panelRoot->addChild(rect({42, 9, 16, 180}, {size.width, 28.0f}, {0.0f, size.height - 28.0f}));
+    m_panelRoot->addChild(rect({255, 28, 56, 70}, {size.width - 10.0f, 1.0f}, {5.0f, size.height - 30.0f}));
+    addBorder(m_panelRoot, size, {255, 39, 66, 230}, 1.5f);
     auto innerBorder = CCNode::create();
-    innerBorder->setPosition({4.0f, 4.0f});
-    addBorder(innerBorder, {size.width - 8.0f, size.height - 8.0f}, {155, 12, 27, 120}, 1.0f);
+    innerBorder->setPosition({5.0f, 5.0f});
+    addBorder(innerBorder, {size.width - 10.0f, size.height - 10.0f}, {165, 16, 32, 112}, 1.0f);
     m_panelRoot->addChild(innerBorder);
 
     auto title = CCLabelBMFont::create("ComsPlus", "bigFont.fnt");
     title->setAnchorPoint({0.0f, 0.5f});
-    title->setScale(0.38f);
+    title->setScale(0.34f);
     title->setColor({255, 230, 232});
-    title->setPosition({12.0f, size.height - 15.0f});
+    title->setPosition({12.0f, size.height - 14.0f});
     m_panelRoot->addChild(title);
 
     m_status = CCLabelBMFont::create("ComsPlus", "chatFont.fnt");
     m_status->setID("comsplus-status"_spr);
     m_status->setAnchorPoint({1.0f, 0.5f});
-    m_status->setScale(0.34f);
-    m_status->setColor({255, 138, 148});
-    m_status->setPosition({size.width - 12.0f, size.height - 15.0f});
+    m_status->setScale(0.31f);
+    m_status->setColor({255, 150, 160});
+    m_status->setPosition({size.width - 12.0f, size.height - 14.0f});
     m_panelRoot->addChild(m_status);
 
     m_messageRoot = CCNode::create();
     m_messageRoot->setID("comsplus-messages"_spr);
-    m_messageRoot->setContentSize({size.width - 20.0f, size.height - 80.0f});
-    m_messageRoot->setPosition({10.0f, 42.0f});
+    m_messageRoot->setContentSize({size.width - 20.0f, size.height - 74.0f});
+    m_messageRoot->setPosition({10.0f, 40.0f});
     m_panelRoot->addChild(m_messageRoot);
 
-    m_input = TextInput::create(size.width - 96.0f, "Message", "chatFont.fnt");
+    m_panelRoot->addChild(rect({0, 0, 0, 88}, {size.width - 96.0f, 24.0f}, {10.0f, 8.0f}));
+    auto inputBorder = CCNode::create();
+    inputBorder->setPosition({10.0f, 8.0f});
+    addBorder(inputBorder, {size.width - 96.0f, 24.0f}, {255, 45, 70, 58}, 1.0f);
+    m_panelRoot->addChild(inputBorder);
+
+    m_input = TextInput::create(size.width - 104.0f, "Message", "chatFont.fnt");
     m_input->setID("comsplus-input"_spr);
     m_input->setScale(0.62f);
     m_input->setMaxCharCount(120);
     m_input->setCommonFilter(CommonFilter::Any);
-    m_input->setPosition({(size.width - 70.0f) * 0.5f, 20.0f});
+    m_input->setPosition({(size.width - 92.0f) * 0.5f, 20.0f});
     m_panelRoot->addChild(m_input);
 
     auto sendSprite = ButtonSprite::create("Send", "chatFont.fnt", "GJ_button_06.png", 0.54f);
@@ -397,6 +426,21 @@ void ComsPlusChatOverlay::tick(float dt) {
     if (m_elapsed < 0.25f) return;
     m_elapsed = 0.0f;
 
+    auto settings = readSettings();
+    auto wantedPanelSize = panelSize();
+    if (
+        m_panelRoot &&
+        (
+            std::abs(wantedPanelSize.width - m_lastPanelWidth) > 0.5f ||
+            std::abs(wantedPanelSize.height - m_lastPanelHeight) > 0.5f ||
+            std::abs(settings.chatOpacity - m_lastChatOpacity) > 0.01f
+        )
+    ) {
+        buildPanel();
+        rebuild();
+        setExpanded(m_expanded);
+    }
+
     if (m_status) {
         m_status->setString(GlobedBridge::get().statusText().c_str());
     }
@@ -404,7 +448,6 @@ void ComsPlusChatOverlay::tick(float dt) {
     updateLayout();
 
     if (isMobileLayout() && m_bubbleRoot) {
-        auto settings = readSettings();
         auto bubbleSize = std::clamp(settings.bubbleSize, 34.0f, 72.0f);
         auto bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
         if (std::abs(bubbleSize - m_lastBubbleSize) > 0.5f || std::abs(bubbleOpacity - m_lastBubbleOpacity) > 0.01f) {
@@ -412,6 +455,8 @@ void ComsPlusChatOverlay::tick(float dt) {
             updateLayout();
         }
     }
+
+    announceJoinIfNeeded();
 
     auto received = GlobedBridge::get().pollReceived();
     for (auto& message : received) {
@@ -451,6 +496,26 @@ void ComsPlusChatOverlay::appendMessage(ChatMessage message, bool local) {
     rebuild();
 }
 
+void ComsPlusChatOverlay::announceJoinIfNeeded() {
+    if (!GlobedBridge::get().isConnected()) return;
+
+    auto levelName = currentLevelName();
+    if (m_joinedLevelKey == levelName) return;
+
+    auto message = makeSystemMessage("joined the chat from " + levelName);
+    if (!GlobedBridge::get().sendChat(message)) return;
+
+    m_joinedLevelKey = levelName;
+    appendMessage(std::move(message), true);
+}
+
+ChatMessage ComsPlusChatOverlay::makeSystemMessage(std::string text) const {
+    auto message = makeLocalMessage(std::move(text));
+    message.kind = ChatMessageKind::System;
+    message.iconData = "";
+    return message;
+}
+
 ChatMessage ComsPlusChatOverlay::makeLocalMessage(std::string text) const {
     auto settings = readSettings();
     DisplayNameSettings displaySettings{
@@ -467,6 +532,7 @@ ChatMessage ComsPlusChatOverlay::makeLocalMessage(std::string text) const {
     message.iconData = localIconData();
     message.text = sanitizeMessage(text);
     message.timestamp = nowMs();
+    message.kind = ChatMessageKind::User;
     return message;
 }
 
@@ -495,8 +561,25 @@ void ComsPlusChatOverlay::rebuild() {
     auto rootSize = m_messageRoot->getContentSize();
     float y = rootSize.height - 10.0f;
     for (auto const& rendered : m_messages) {
+        if (rendered.message.kind == ChatMessageKind::System) {
+            auto line = rendered.message.displayName + " " + rendered.message.text;
+            auto row = rect({70, 10, 20, 40}, {rootSize.width, 12.0f}, {0.0f, y - 6.0f});
+            m_messageRoot->addChild(row);
+
+            auto label = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
+            label->setAnchorPoint({0.0f, 0.5f});
+            label->setScale(0.27f);
+            label->setColor({205, 158, 166});
+            label->setPosition({6.0f, y});
+            label->limitLabelWidth(rootSize.width - 12.0f, 0.27f, 0.07f);
+            m_messageRoot->addChild(label);
+
+            y -= 14.0f;
+            continue;
+        }
+
         auto row = rect(
-            rendered.local ? ccColor4B{35, 80, 68, 80} : ccColor4B{32, 38, 56, 72},
+            rendered.local ? ccColor4B{25, 84, 72, 68} : ccColor4B{46, 20, 32, 62},
             {rootSize.width, 18.0f},
             {0.0f, y - 9.0f}
         );

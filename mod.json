@@ -6,12 +6,12 @@
   },
   "id": "exploited.comsplus",
   "name": "ComsPlus",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "developer": "Exploited",
   "description": "Local privacy display names and Globed-backed ComsPlus chat.",
   "dependencies": {
     "dankmeme.globed2": {
-      "version": ">=2.2.0",
+      "version": ">=2.1.4",
       "required": false
     }
   },
@@ -96,6 +96,30 @@
       "control": {
         "slider": true,
         "slider-step": 0.02,
+        "input": false
+      }
+    },
+    "desktop-panel-width": {
+      "type": "float",
+      "name": "Desktop chat width",
+      "default": 336,
+      "min": 280,
+      "max": 520,
+      "control": {
+        "slider": true,
+        "slider-step": 8,
+        "input": false
+      }
+    },
+    "desktop-panel-height": {
+      "type": "float",
+      "name": "Desktop chat height",
+      "default": 188,
+      "min": 150,
+      "max": 300,
+      "control": {
+        "slider": true,
+        "slider-step": 6,
         "input": false
       }
     },

@@ -13,6 +13,8 @@ struct ComsPlusSettings {
     std::string fakeName = "ComsPlayer";
     ChatNameMode chatNameMode = ChatNameMode::Auto;
     float chatOpacity = 0.78f;
+    float desktopPanelWidth = 336.0f;
+    float desktopPanelHeight = 188.0f;
     float bubbleOpacity = 0.92f;
     float bubbleSize = 46.0f;
     bool hideBubbleInMainMenu = true;

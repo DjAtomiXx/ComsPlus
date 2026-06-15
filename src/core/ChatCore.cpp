@@ -150,6 +150,17 @@ std::optional<std::int64_t> extractInt(std::string_view payload, std::string_vie
     return value;
 }
 
+std::string_view kindToWire(ChatMessageKind kind) {
+    return kind == ChatMessageKind::System ? "system" : "user";
+}
+
+ChatMessageKind parseKind(std::optional<std::string> const& kind) {
+    if (kind && *kind == "system") {
+        return ChatMessageKind::System;
+    }
+    return ChatMessageKind::User;
+}
+
 } // namespace
 
 RateLimiter::RateLimiter(std::int64_t cooldownMs)
@@ -222,6 +233,7 @@ std::string encodePayload(ChatMessage const& message) {
     std::ostringstream out;
     out << "{"
         << "\"v\":" << sanitized.protocolVersion << ","
+        << "\"kind\":\"" << kindToWire(sanitized.kind) << "\","
         << "\"id\":\"" << escapeJson(sanitized.messageId) << "\","
         << "\"aid\":" << sanitized.accountId << ","
         << "\"name\":\"" << escapeJson(sanitized.displayName) << "\","
@@ -248,6 +260,7 @@ std::optional<ChatMessage> decodePayload(std::string const& payload) {
     auto icon = extractString(payload, "icon");
     auto text = extractString(payload, "text");
     auto timestamp = extractInt(payload, "ts");
+    auto kind = extractString(payload, "kind");
 
     if (!messageId || !accountId || !name || !icon || !text || !timestamp) {
         return std::nullopt;
@@ -255,6 +268,7 @@ std::optional<ChatMessage> decodePayload(std::string const& payload) {
 
     ChatMessage message;
     message.protocolVersion = static_cast<int>(*version);
+    message.kind = parseKind(kind);
     message.messageId = sanitizeText(*messageId, 48);
     message.accountId = *accountId;
     message.displayName = sanitizeName(*name);

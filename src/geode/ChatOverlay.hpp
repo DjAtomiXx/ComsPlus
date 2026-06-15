@@ -47,6 +47,8 @@ private:
     void setExpanded(bool expanded);
     void openPanel();
     void appendMessage(ChatMessage message, bool local);
+    void announceJoinIfNeeded();
+    ChatMessage makeSystemMessage(std::string text) const;
     ChatMessage makeLocalMessage(std::string text) const;
     cocos2d::CCNode* createIconNode(std::string const& iconData) const;
     bool pointInBubble(cocos2d::CCPoint const& point) const;
@@ -70,7 +72,11 @@ private:
     bool m_dragged = false;
     float m_lastBubbleSize = 0.0f;
     float m_lastBubbleOpacity = 0.0f;
+    float m_lastPanelWidth = 0.0f;
+    float m_lastPanelHeight = 0.0f;
+    float m_lastChatOpacity = 0.0f;
     float m_elapsed = 0.0f;
+    std::string m_joinedLevelKey;
 };
 
 ComsPlusChatOverlay* activeChatOverlay();
