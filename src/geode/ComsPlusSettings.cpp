@@ -35,9 +35,12 @@ ComsPlusSettings readSettings() {
     settings.fakeName = settingOr<std::string>("fake-name", settings.fakeName);
     settings.chatNameMode = parseMode(settingOr<std::string>("chat-name-mode", "auto"));
     settings.chatOpacity = static_cast<float>(settingOr<double>("chat-opacity", settings.chatOpacity));
+    settings.bubbleOpacity = static_cast<float>(settingOr<double>("bubble-opacity", settings.bubbleOpacity));
+    settings.hideBubbleInMainMenu = settingOr<bool>("hide-bubble-main-menu", settings.hideBubbleInMainMenu);
     settings.sendCooldownMs = static_cast<int>(settingOr<int64_t>("send-cooldown-ms", settings.sendCooldownMs));
     settings.maxChatMessages = static_cast<int>(settingOr<int64_t>("max-chat-messages", settings.maxChatMessages));
     settings.chatOpacity = std::clamp(settings.chatOpacity, 0.2f, 1.0f);
+    settings.bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
     settings.sendCooldownMs = std::clamp(settings.sendCooldownMs, 500, 10000);
     settings.maxChatMessages = std::clamp(settings.maxChatMessages, 3, 20);
     return settings;

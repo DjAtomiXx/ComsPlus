@@ -12,6 +12,8 @@ struct ComsPlusSettings {
     std::string fakeName = "ComsPlayer";
     ChatNameMode chatNameMode = ChatNameMode::Auto;
     float chatOpacity = 0.78f;
+    float bubbleOpacity = 0.92f;
+    bool hideBubbleInMainMenu = true;
     int sendCooldownMs = 1500;
     int maxChatMessages = 8;
 };

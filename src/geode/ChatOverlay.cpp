@@ -1,11 +1,14 @@
 #include "ChatOverlay.hpp"
 
 #include <Geode/Bindings.hpp>
+#include <Geode/Geode.hpp>
 #include <Geode/ui/TextInput.hpp>
+#include <Geode/utils/string.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <random>
 #include <sstream>
 
@@ -80,6 +83,17 @@ void addBorder(CCNode* parent, CCSize size, ccColor4B color, float thickness) {
     parent->addChild(rect(color, {size.width, thickness}, {0.0f, 0.0f}));
     parent->addChild(rect(color, {thickness, size.height}, {0.0f, 0.0f}));
     parent->addChild(rect(color, {thickness, size.height}, {size.width - thickness, 0.0f}));
+}
+
+CCSprite* createBubbleIcon() {
+    auto logoPath = Mod::get()->getTempDir() / "logo.png";
+    if (std::filesystem::exists(logoPath)) {
+        auto path = utils::string::pathToString(logoPath);
+        if (auto sprite = CCSprite::create(path.c_str())) {
+            return sprite;
+        }
+    }
+    return CCSprite::create("comsplus-icon.png"_spr);
 }
 
 int parseIconPart(std::string const& iconData, std::string const& key, int fallback) {
@@ -167,21 +181,41 @@ void ComsPlusChatOverlay::buildBubble() {
         m_bubbleRoot->removeFromParentAndCleanup(true);
     }
 
+    auto settings = readSettings();
+    auto bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
+    auto alpha = [bubbleOpacity](float value) {
+        return static_cast<GLubyte>(std::clamp(value * bubbleOpacity, 0.0f, 255.0f));
+    };
+
     m_bubbleRoot = CCNode::create();
     m_bubbleRoot->setID("comsplus-chat-bubble"_spr);
     m_bubbleRoot->setContentSize({kBubbleSize, kBubbleSize});
     this->addChild(m_bubbleRoot, 4);
 
-    m_bubbleRoot->addChild(rect({190, 10, 28, 72}, {kBubbleSize + 8.0f, kBubbleSize + 8.0f}, {-4.0f, -4.0f}));
-    m_bubbleRoot->addChild(rect({8, 9, 14, 232}, {kBubbleSize, kBubbleSize}, {0.0f, 0.0f}));
-    addBorder(m_bubbleRoot, {kBubbleSize, kBubbleSize}, {255, 42, 62, 230}, 2.0f);
+    m_bubbleRoot->addChild(rect({190, 10, 28, alpha(92.0f)}, {kBubbleSize + 8.0f, kBubbleSize + 8.0f}, {-4.0f, -4.0f}));
+    m_bubbleRoot->addChild(rect({8, 9, 14, alpha(215.0f)}, {kBubbleSize, kBubbleSize}, {0.0f, 0.0f}));
+    addBorder(m_bubbleRoot, {kBubbleSize, kBubbleSize}, {255, 42, 62, alpha(235.0f)}, 2.0f);
 
-    auto dot = CCLabelBMFont::create("...", "bigFont.fnt");
-    dot->setAnchorPoint({0.5f, 0.5f});
-    dot->setScale(0.55f);
-    dot->setColor({255, 240, 242});
-    dot->setPosition({kBubbleSize * 0.5f, kBubbleSize * 0.53f});
-    m_bubbleRoot->addChild(dot);
+    if (auto icon = createBubbleIcon()) {
+        icon->setID("comsplus-bubble-icon"_spr);
+        icon->setAnchorPoint({0.5f, 0.5f});
+        icon->setPosition({kBubbleSize * 0.5f, kBubbleSize * 0.5f});
+        icon->setOpacity(alpha(255.0f));
+        auto size = icon->getContentSize();
+        auto maxSize = std::max(size.width, size.height);
+        if (maxSize > 0.0f) {
+            icon->setScale((kBubbleSize - 5.0f) / maxSize);
+        }
+        m_bubbleRoot->addChild(icon);
+    } else {
+        auto dot = CCLabelBMFont::create("...", "bigFont.fnt");
+        dot->setAnchorPoint({0.5f, 0.5f});
+        dot->setScale(0.55f);
+        dot->setColor({255, 240, 242});
+        dot->setOpacity(alpha(255.0f));
+        dot->setPosition({kBubbleSize * 0.5f, kBubbleSize * 0.53f});
+        m_bubbleRoot->addChild(dot);
+    }
 }
 
 void ComsPlusChatOverlay::buildPanel() {
