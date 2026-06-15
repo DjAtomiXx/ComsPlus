@@ -5,35 +5,23 @@
 
 #include <Geode/Bindings.hpp>
 
-#include <algorithm>
-#include <cctype>
-
 using namespace geode::prelude;
 
 namespace comsplus {
 namespace {
 
-std::string lowercaseAscii(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return text;
-}
+bool replaceLabelText(CCLabelProtocol* label, std::string const& realName, std::string const& fakeName) {
+    if (!label) return false;
 
-std::string replaceAll(std::string text, std::string const& needle, std::string const& replacement) {
-    if (needle.empty() || needle == replacement) return text;
+    auto currentText = label->getString();
+    if (!currentText) return false;
 
-    auto lowerText = lowercaseAscii(text);
-    auto lowerNeedle = lowercaseAscii(needle);
-    auto lowerReplacement = lowercaseAscii(replacement);
+    auto current = std::string(currentText);
+    auto spoofed = replaceOwnNameText(current, realName, fakeName);
+    if (spoofed == current) return false;
 
-    std::size_t pos = 0;
-    while ((pos = lowerText.find(lowerNeedle, pos)) != std::string::npos) {
-        text.replace(pos, needle.size(), replacement);
-        lowerText.replace(pos, lowerNeedle.size(), lowerReplacement);
-        pos += replacement.size();
-    }
-    return text;
+    label->setString(spoofed.c_str());
+    return true;
 }
 
 } // namespace
@@ -42,41 +30,29 @@ std::string privacySpoofText(std::string const& input) {
     auto settings = readSettings();
     if (!settings.privacyEnabled) return input;
 
-    auto real = sanitizeName(localRealName());
-    auto fake = sanitizeName(settings.fakeName);
-    if (real.size() < 3 || fake.empty() || real == fake) return input;
-
-    return replaceAll(input, real, fake);
+    auto text = input;
+    for (auto const& realName : localRealNameCandidates()) {
+        text = replaceOwnNameText(text, realName, settings.fakeName);
+    }
+    return text;
 }
 
 int replaceOwnNameLabels(CCNode* root, std::string const& realName, std::string const& fakeName) {
     if (!root) return 0;
 
-    auto cleanReal = sanitizeName(realName);
-    auto cleanFake = sanitizeName(fakeName);
-    if (cleanReal.empty() || cleanFake.empty() || cleanReal == cleanFake) return 0;
-
     int replaced = 0;
 
     if (auto label = typeinfo_cast<CCLabelBMFont*>(root)) {
-        auto current = std::string(label->getString());
-        auto spoofed = replaceAll(current, cleanReal, cleanFake);
-        if (spoofed != current) {
-            label->setString(spoofed.c_str());
-            ++replaced;
-        }
+        replaced += replaceLabelText(label, realName, fakeName) ? 1 : 0;
     } else if (auto label = typeinfo_cast<CCLabelTTF*>(root)) {
-        auto current = std::string(label->getString());
-        auto spoofed = replaceAll(current, cleanReal, cleanFake);
-        if (spoofed != current) {
-            label->setString(spoofed.c_str());
-            ++replaced;
-        }
+        replaced += replaceLabelText(label, realName, fakeName) ? 1 : 0;
+    } else if (auto label = dynamic_cast<CCLabelProtocol*>(root)) {
+        replaced += replaceLabelText(label, realName, fakeName) ? 1 : 0;
     }
 
     if (auto children = root->getChildren()) {
         for (auto child : CCArrayExt<CCNode*>(children)) {
-            replaced += replaceOwnNameLabels(child, cleanReal, cleanFake);
+            replaced += replaceOwnNameLabels(child, realName, fakeName);
         }
     }
 

@@ -5,6 +5,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
 #include <Geode/modify/AccountLayer.hpp>
+#include <Geode/modify/CCKeyboardDispatcher.hpp>
 #include <Geode/modify/CCLabelBMFont.hpp>
 #include <Geode/modify/CCLabelTTF.hpp>
 #include <Geode/modify/GJAccountSettingsLayer.hpp>
@@ -15,25 +16,96 @@
 #include <Geode/modify/ProfilePage.hpp>
 #include <Geode/utils/Keyboard.hpp>
 
+#include <chrono>
 #include <vector>
 
 using namespace geode::prelude;
 
 namespace {
 
+std::string g_lastFakeName;
+
 void applyPrivacyTo(CCNode* node) {
     auto settings = comsplus::readSettings();
     if (!settings.privacyEnabled) return;
 
-    auto real = comsplus::localRealName();
     auto fake = settings.fakeName;
-    auto count = comsplus::replaceOwnNameLabels(node, real, fake);
+    auto count = 0;
+    for (auto const& real : comsplus::localRealNameCandidates()) {
+        count += comsplus::replaceOwnNameLabels(node, real, fake);
+    }
+    if (!g_lastFakeName.empty() && comsplus::sanitizeName(g_lastFakeName) != comsplus::sanitizeName(fake)) {
+        count += comsplus::replaceOwnNameLabels(node, g_lastFakeName, fake);
+    }
+    g_lastFakeName = fake;
+
     if (count > 0) {
         log::debug("ComsPlus replaced {} local name label(s)", count);
     }
 }
 
+class ComsPlusPrivacyRefresher final : public CCNode {
+public:
+    static ComsPlusPrivacyRefresher* create() {
+        auto ret = new ComsPlusPrivacyRefresher();
+        if (ret && ret->init()) {
+            ret->autorelease();
+            return ret;
+        }
+        delete ret;
+        return nullptr;
+    }
+
+    bool init() override {
+        if (!CCNode::init()) return false;
+
+        this->setID("comsplus-privacy-refresher"_spr);
+        this->schedule(schedule_selector(ComsPlusPrivacyRefresher::refresh), 0.35f);
+        return true;
+    }
+
+    void refresh(float) {
+        if (auto scene = CCDirector::sharedDirector()->getRunningScene()) {
+            applyPrivacyTo(scene);
+        }
+    }
+};
+
+void ensurePrivacyRefresher() {
+    if (!comsplus::readSettings().privacyEnabled) return;
+
+    auto scene = CCDirector::sharedDirector()->getRunningScene();
+    if (!scene || scene->getChildByID("comsplus-privacy-refresher"_spr)) return;
+
+    if (auto refresher = ComsPlusPrivacyRefresher::create()) {
+        scene->addChild(refresher, 100001);
+    }
+}
+
+void refreshCurrentScenePrivacy() {
+    ensurePrivacyRefresher();
+    if (auto scene = CCDirector::sharedDirector()->getRunningScene()) {
+        applyPrivacyTo(scene);
+    }
+}
+
 #ifndef GEODE_IS_ANDROID
+std::int64_t steadyMs() {
+    auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+}
+
+bool consumeChatShortcut() {
+    static std::int64_t s_lastShortcutMs = 0;
+
+    auto now = steadyMs();
+    if (now - s_lastShortcutMs < 140) {
+        return false;
+    }
+    s_lastShortcutMs = now;
+    return true;
+}
+
 std::vector<Keybind> openChatKeybinds() {
     auto bindings = Mod::get()->getSettingValue<std::vector<Keybind>>("open-chat-keybind");
     if (bindings.empty()) {
@@ -44,7 +116,6 @@ std::vector<Keybind> openChatKeybinds() {
 
 bool isOpenChatKey(KeyboardInputData const& data) {
     if (data.action != KeyboardInputData::Action::Press) return false;
-    if (CCIMEDispatcher::sharedDispatcher()->hasDelegate()) return false;
 
     auto pressed = Keybind(data.key, data.modifiers);
     for (auto const& bind : openChatKeybinds()) {
@@ -55,19 +126,58 @@ bool isOpenChatKey(KeyboardInputData const& data) {
     return false;
 }
 
+bool hasPlainCChatKeybind() {
+    auto plainC = Keybind(KEY_C, KeyboardModifier::None);
+    for (auto const& bind : openChatKeybinds()) {
+        if (bind == plainC) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasModifierKeyPressed() {
+    auto dispatcher = CCKeyboardDispatcher::get();
+    return dispatcher && (
+        dispatcher->getShiftKeyPressed() ||
+        dispatcher->getControlKeyPressed() ||
+        dispatcher->getAltKeyPressed() ||
+        dispatcher->getCommandKeyPressed()
+    );
+}
+
+bool isTextInputActive() {
+    auto dispatcher = CCIMEDispatcher::sharedDispatcher();
+    return dispatcher && dispatcher->hasDelegate();
+}
+
 bool ensureChatOverlay() {
     if (comsplus::activeChatOverlay()) return true;
 
-    auto gm = GameManager::get();
-    if (!gm || !gm->m_playLayer) return false;
-
     auto scene = CCDirector::sharedDirector()->getRunningScene();
-    auto parent = scene ? static_cast<CCNode*>(scene) : static_cast<CCNode*>(gm->m_playLayer);
+    auto parent = static_cast<CCNode*>(scene);
+    if (!parent) {
+        if (auto gm = GameManager::get()) {
+            parent = gm->m_playLayer;
+        }
+    }
+    if (!parent) return false;
+
     if (auto overlay = comsplus::ComsPlusChatOverlay::create()) {
         parent->addChild(overlay, 100000);
         return true;
     }
     return false;
+}
+
+bool openDesktopChat(bool respectTextInput, bool debounce) {
+    if (!comsplus::readSettings().chatEnabled) return false;
+    if (respectTextInput && isTextInputActive()) return false;
+    if (debounce && !consumeChatShortcut()) return false;
+    if (!ensureChatOverlay()) return false;
+
+    comsplus::toggleActiveChatOverlay();
+    return true;
 }
 #endif
 
@@ -78,18 +188,49 @@ $execute {
     comsplus::GlobedBridge::get().initialize();
 
 #ifndef GEODE_IS_ANDROID
+    listenForKeybindSettingPresses("open-chat-keybind", [](Keybind const&, bool down, bool repeat, double) {
+        if (!down || repeat) return false;
+        return openDesktopChat(false, true);
+    });
+
     KeyboardInputEvent().listen([](KeyboardInputData& data) {
-        if (!comsplus::readSettings().chatEnabled || !isOpenChatKey(data)) {
+        if (!isOpenChatKey(data)) {
             return ListenerResult::Propagate;
         }
-        if (!ensureChatOverlay()) {
+        if (!openDesktopChat(true, true)) {
             return ListenerResult::Propagate;
         }
-        comsplus::toggleActiveChatOverlay();
         return ListenerResult::Stop;
     }).leak();
 #endif
+
+    listenForSettingChanges<bool>("privacy-enabled", [](bool) {
+        refreshCurrentScenePrivacy();
+    });
+    listenForSettingChanges<std::string>("fake-name", [](std::string) {
+        refreshCurrentScenePrivacy();
+    });
 }
+
+#ifndef GEODE_IS_ANDROID
+class $modify(ComsPlusKeyboardDispatcher, CCKeyboardDispatcher) {
+    bool dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown, bool isKeyRepeat, double timestamp) {
+        auto handled = CCKeyboardDispatcher::dispatchKeyboardMSG(key, isKeyDown, isKeyRepeat, timestamp);
+
+        if (
+            key == KEY_C &&
+            isKeyDown &&
+            !isKeyRepeat &&
+            hasPlainCChatKeybind() &&
+            !hasModifierKeyPressed()
+        ) {
+            openDesktopChat(true, true);
+        }
+
+        return handled;
+    }
+};
+#endif
 
 class $modify(ComsPlusPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
@@ -107,6 +248,7 @@ class $modify(ComsPlusPlayLayer, PlayLayer) {
         }
 
         applyPrivacyTo(this);
+        ensurePrivacyRefresher();
         return true;
     }
 
@@ -120,6 +262,7 @@ class $modify(ComsPlusMenuLayer, MenuLayer) {
     bool init() {
         if (!MenuLayer::init()) return false;
         applyPrivacyTo(this);
+        ensurePrivacyRefresher();
         return true;
     }
 };
@@ -129,6 +272,7 @@ class $modify(ComsPlusProfilePage, ProfilePage) {
         if (!ProfilePage::init(accountId, ownProfile)) return false;
         if (ownProfile || accountId == comsplus::localAccountId()) {
             applyPrivacyTo(this);
+            ensurePrivacyRefresher();
             this->scheduleOnce(schedule_selector(ComsPlusProfilePage::delayedPrivacyRefresh), 0.05f);
             this->scheduleOnce(schedule_selector(ComsPlusProfilePage::delayedPrivacyRefresh), 0.25f);
         }
@@ -144,6 +288,7 @@ class $modify(ComsPlusGarageLayer, GJGarageLayer) {
     bool init() {
         if (!GJGarageLayer::init()) return false;
         applyPrivacyTo(this);
+        ensurePrivacyRefresher();
         return true;
     }
 };
@@ -152,6 +297,7 @@ class $modify(ComsPlusAccountLayer, AccountLayer) {
     void customSetup() {
         AccountLayer::customSetup();
         applyPrivacyTo(this);
+        ensurePrivacyRefresher();
         this->scheduleOnce(schedule_selector(ComsPlusAccountLayer::delayedPrivacyRefresh), 0.05f);
     }
 
@@ -165,6 +311,7 @@ class $modify(ComsPlusAccountSettingsLayer, GJAccountSettingsLayer) {
         if (!GJAccountSettingsLayer::init(accountId)) return false;
         if (accountId == comsplus::localAccountId()) {
             applyPrivacyTo(this);
+            ensurePrivacyRefresher();
         }
         return true;
     }
@@ -174,13 +321,35 @@ class $modify(ComsPlusPauseLayer, PauseLayer) {
     void customSetup() {
         PauseLayer::customSetup();
         applyPrivacyTo(this);
+        ensurePrivacyRefresher();
         comsplus::raiseActiveChatOverlay();
+
+#ifndef GEODE_IS_ANDROID
+        if (!comsplus::readSettings().chatEnabled || this->getChildByID("comsplus-desktop-chat-menu"_spr)) return;
+
+        auto chatSprite = ButtonSprite::create("Chat", "bigFont.fnt", "GJ_button_06.png", 0.58f);
+        auto chatButton = CCMenuItemSpriteExtra::create(chatSprite, this, menu_selector(ComsPlusPauseLayer::onComsPlusChat));
+        chatButton->setID("comsplus-desktop-chat-button"_spr);
+
+        auto chatMenu = CCMenu::create();
+        chatMenu->setID("comsplus-desktop-chat-menu"_spr);
+        auto win = CCDirector::sharedDirector()->getWinSize();
+        chatMenu->setPosition({win.width - 46.0f, 28.0f});
+        chatMenu->addChild(chatButton);
+        this->addChild(chatMenu, 50);
+#endif
     }
 
     void onResume(CCObject* sender) {
         comsplus::collapseActiveChatOverlay();
         PauseLayer::onResume(sender);
     }
+
+#ifndef GEODE_IS_ANDROID
+    void onComsPlusChat(CCObject*) {
+        openDesktopChat(false, false);
+    }
+#endif
 };
 
 class $modify(ComsPlusBMFontLabel, CCLabelBMFont) {

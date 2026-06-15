@@ -43,6 +43,7 @@ private:
 std::string sanitizeName(std::string const& input);
 std::string sanitizeMessage(std::string const& input);
 std::string selectDisplayName(std::string const& realName, DisplayNameSettings const& settings);
+std::string replaceOwnNameText(std::string const& input, std::string const& realName, std::string const& fakeName);
 std::string encodePayload(ChatMessage const& message);
 std::optional<ChatMessage> decodePayload(std::string const& payload);
 

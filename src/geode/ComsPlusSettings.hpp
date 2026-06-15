@@ -3,6 +3,7 @@
 #include "ChatCore.hpp"
 
 #include <string>
+#include <vector>
 
 namespace comsplus {
 
@@ -21,6 +22,7 @@ struct ComsPlusSettings {
 
 ComsPlusSettings readSettings();
 std::string localRealName();
+std::vector<std::string> localRealNameCandidates();
 std::int64_t localAccountId();
 std::string localIconData();
 

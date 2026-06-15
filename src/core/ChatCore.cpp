@@ -45,6 +45,13 @@ std::string sanitizeText(std::string const& input, std::size_t maxLength) {
     return out;
 }
 
+std::string lowercaseAscii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
+
 std::string escapeJson(std::string const& input) {
     std::string out;
     out.reserve(input.size() + 8);
@@ -181,6 +188,27 @@ std::string selectDisplayName(std::string const& realName, DisplayNameSettings c
     }
 
     return real.empty() ? "Player" : real;
+}
+
+std::string replaceOwnNameText(std::string const& input, std::string const& realName, std::string const& fakeName) {
+    auto real = sanitizeName(realName);
+    auto fake = sanitizeName(fakeName);
+    if (real.size() < 3 || fake.empty() || lowercaseAscii(real) == lowercaseAscii(fake)) {
+        return input;
+    }
+
+    auto text = input;
+    auto lowerText = lowercaseAscii(text);
+    auto lowerReal = lowercaseAscii(real);
+    auto lowerFake = lowercaseAscii(fake);
+
+    std::size_t pos = 0;
+    while ((pos = lowerText.find(lowerReal, pos)) != std::string::npos) {
+        text.replace(pos, real.size(), fake);
+        lowerText.replace(pos, lowerReal.size(), lowerFake);
+        pos += fake.size();
+    }
+    return text;
 }
 
 std::string encodePayload(ChatMessage const& message) {

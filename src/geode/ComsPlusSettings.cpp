@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <vector>
 
 using namespace geode::prelude;
 
@@ -24,6 +25,13 @@ ChatNameMode parseMode(std::string mode) {
 template <typename T>
 T settingOr(std::string_view key, T fallback) {
     return Mod::get()->getSettingValue<T>(key);
+}
+
+void addNameCandidate(std::vector<std::string>& names, std::string name) {
+    auto clean = sanitizeName(name);
+    if (clean.empty()) return;
+    if (std::find(names.begin(), names.end(), clean) != names.end()) return;
+    names.push_back(std::move(clean));
 }
 
 } // namespace
@@ -49,10 +57,24 @@ ComsPlusSettings readSettings() {
 }
 
 std::string localRealName() {
+    auto candidates = localRealNameCandidates();
+    if (!candidates.empty()) return candidates.front();
+    return "Player";
+}
+
+std::vector<std::string> localRealNameCandidates() {
+    std::vector<std::string> names;
+
+    if (auto account = GJAccountManager::get()) {
+        addNameCandidate(names, std::string(account->m_username));
+    }
+
     auto gm = GameManager::get();
-    if (!gm) return "Player";
-    auto name = std::string(gm->m_playerName);
-    return name.empty() ? "Player" : name;
+    if (gm) {
+        addNameCandidate(names, std::string(gm->m_playerName));
+    }
+
+    return names;
 }
 
 std::int64_t localAccountId() {

@@ -37,6 +37,9 @@ int main() {
     CHECK(sanitizeMessage(std::string(180, 'x')).size() == 120);
     CHECK(sanitizeMessage("\n\t   ").empty());
 
+    CHECK(replaceOwnNameText("LUNASTRY joined Lunastry", "lunastry", "ComsPlayer") == "ComsPlayer joined ComsPlayer");
+    CHECK(replaceOwnNameText("thethingch", "lunastry", "ComsPlayer") == "thethingch");
+
     RateLimiter limiter(1000);
     CHECK(limiter.canSend(1000));
     limiter.markSent(1000);

@@ -6,7 +6,7 @@
   },
   "id": "exploited.comsplus",
   "name": "ComsPlus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "developer": "Exploited",
   "description": "Local privacy display names and Globed-backed ComsPlus chat.",
   "dependencies": {
