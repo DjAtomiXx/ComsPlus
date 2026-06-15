@@ -8,4 +8,8 @@ The fake name is local UI text. It does not change your Geometry Dash account, a
 
 ## Chat
 
-The chat opens from a draggable floating bubble in levels. Opening it pauses the level, and pressing Resume returns it to the bubble. Messages are sent through Globed 2.2.0+ server events to other ComsPlus users connected to the same Globed level.
+On Android, the chat opens from a draggable floating bubble in levels. The bubble opacity and size can be adjusted in the mod settings.
+
+On Windows, the chat opens with the configurable Open chat keybind. The default key is C. Opening chat pauses the level, and pressing Resume hides the panel again.
+
+Messages are sent through Globed 2.2.0+ server events to other ComsPlus users connected to the same Globed level.

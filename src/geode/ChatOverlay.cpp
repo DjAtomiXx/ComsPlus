@@ -17,7 +17,6 @@ using namespace geode::prelude;
 namespace comsplus {
 namespace {
 
-constexpr float kBubbleSize = 46.0f;
 constexpr float kDragThreshold = 6.0f;
 ComsPlusChatOverlay* g_activeOverlay = nullptr;
 
@@ -114,7 +113,8 @@ ccColor3B colorFor(int colorId) {
 
 CCPoint defaultBubblePosition() {
     auto win = winSize();
-    return {win.width - kBubbleSize - 18.0f, 18.0f};
+    auto size = readSettings().bubbleSize;
+    return {win.width - size - 18.0f, 18.0f};
 }
 
 CCPoint defaultPanelPosition() {
@@ -152,7 +152,9 @@ bool ComsPlusChatOverlay::init() {
     m_bubblePosition = clampedBubblePosition(defaultBubblePosition());
     m_panelPosition = clampedPanelPosition(defaultPanelPosition());
 
-    buildBubble();
+    if (isMobileLayout()) {
+        buildBubble();
+    }
     buildPanel();
     setExpanded(false);
 
@@ -183,28 +185,31 @@ void ComsPlusChatOverlay::buildBubble() {
 
     auto settings = readSettings();
     auto bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
+    auto bubbleSize = std::clamp(settings.bubbleSize, 34.0f, 72.0f);
+    m_lastBubbleOpacity = bubbleOpacity;
+    m_lastBubbleSize = bubbleSize;
     auto alpha = [bubbleOpacity](float value) {
         return static_cast<GLubyte>(std::clamp(value * bubbleOpacity, 0.0f, 255.0f));
     };
 
     m_bubbleRoot = CCNode::create();
     m_bubbleRoot->setID("comsplus-chat-bubble"_spr);
-    m_bubbleRoot->setContentSize({kBubbleSize, kBubbleSize});
+    m_bubbleRoot->setContentSize({bubbleSize, bubbleSize});
     this->addChild(m_bubbleRoot, 4);
 
-    m_bubbleRoot->addChild(rect({190, 10, 28, alpha(92.0f)}, {kBubbleSize + 8.0f, kBubbleSize + 8.0f}, {-4.0f, -4.0f}));
-    m_bubbleRoot->addChild(rect({8, 9, 14, alpha(215.0f)}, {kBubbleSize, kBubbleSize}, {0.0f, 0.0f}));
-    addBorder(m_bubbleRoot, {kBubbleSize, kBubbleSize}, {255, 42, 62, alpha(235.0f)}, 2.0f);
+    m_bubbleRoot->addChild(rect({190, 10, 28, alpha(92.0f)}, {bubbleSize + 8.0f, bubbleSize + 8.0f}, {-4.0f, -4.0f}));
+    m_bubbleRoot->addChild(rect({8, 9, 14, alpha(215.0f)}, {bubbleSize, bubbleSize}, {0.0f, 0.0f}));
+    addBorder(m_bubbleRoot, {bubbleSize, bubbleSize}, {255, 42, 62, alpha(235.0f)}, 2.0f);
 
     if (auto icon = createBubbleIcon()) {
         icon->setID("comsplus-bubble-icon"_spr);
         icon->setAnchorPoint({0.5f, 0.5f});
-        icon->setPosition({kBubbleSize * 0.5f, kBubbleSize * 0.5f});
+        icon->setPosition({bubbleSize * 0.5f, bubbleSize * 0.5f});
         icon->setOpacity(alpha(255.0f));
         auto size = icon->getContentSize();
         auto maxSize = std::max(size.width, size.height);
         if (maxSize > 0.0f) {
-            icon->setScale((kBubbleSize - 5.0f) / maxSize);
+            icon->setScale((bubbleSize - 5.0f) / maxSize);
         }
         m_bubbleRoot->addChild(icon);
     } else {
@@ -213,7 +218,7 @@ void ComsPlusChatOverlay::buildBubble() {
         dot->setScale(0.55f);
         dot->setColor({255, 240, 242});
         dot->setOpacity(alpha(255.0f));
-        dot->setPosition({kBubbleSize * 0.5f, kBubbleSize * 0.53f});
+        dot->setPosition({bubbleSize * 0.5f, bubbleSize * 0.53f});
         m_bubbleRoot->addChild(dot);
     }
 }
@@ -300,7 +305,7 @@ void ComsPlusChatOverlay::updateLayout() {
 
 void ComsPlusChatOverlay::setExpanded(bool expanded) {
     m_expanded = expanded;
-    if (m_bubbleRoot) m_bubbleRoot->setVisible(!expanded);
+    if (m_bubbleRoot) m_bubbleRoot->setVisible(isMobileLayout() && !expanded);
     if (m_panelRoot) m_panelRoot->setVisible(expanded);
     updateLayout();
 }
@@ -317,6 +322,14 @@ void ComsPlusChatOverlay::openPanel() {
 
 void ComsPlusChatOverlay::collapse() {
     setExpanded(false);
+}
+
+void ComsPlusChatOverlay::togglePanel() {
+    if (m_expanded) {
+        collapse();
+    } else {
+        openPanel();
+    }
 }
 
 void ComsPlusChatOverlay::raiseToScene() {
@@ -389,6 +402,16 @@ void ComsPlusChatOverlay::tick(float dt) {
     }
 
     updateLayout();
+
+    if (isMobileLayout() && m_bubbleRoot) {
+        auto settings = readSettings();
+        auto bubbleSize = std::clamp(settings.bubbleSize, 34.0f, 72.0f);
+        auto bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
+        if (std::abs(bubbleSize - m_lastBubbleSize) > 0.5f || std::abs(bubbleOpacity - m_lastBubbleOpacity) > 0.01f) {
+            buildBubble();
+            updateLayout();
+        }
+    }
 
     auto received = GlobedBridge::get().pollReceived();
     for (auto& message : received) {
@@ -505,7 +528,7 @@ void ComsPlusChatOverlay::rebuild() {
 }
 
 bool ComsPlusChatOverlay::pointInBubble(CCPoint const& point) const {
-    return m_bubbleRoot && pointInRect(point, m_bubblePosition, {kBubbleSize, kBubbleSize});
+    return m_bubbleRoot && pointInRect(point, m_bubblePosition, m_bubbleRoot->getContentSize());
 }
 
 bool ComsPlusChatOverlay::pointInPanelHeader(CCPoint const& point) const {
@@ -520,9 +543,10 @@ bool ComsPlusChatOverlay::pointInPanelHeader(CCPoint const& point) const {
 
 CCPoint ComsPlusChatOverlay::clampedBubblePosition(CCPoint position) const {
     auto win = winSize();
+    auto size = m_bubbleRoot ? m_bubbleRoot->getContentSize().width : readSettings().bubbleSize;
     return {
-        std::clamp(position.x, 8.0f, std::max(8.0f, win.width - kBubbleSize - 8.0f)),
-        std::clamp(position.y, 8.0f, std::max(8.0f, win.height - kBubbleSize - 8.0f))
+        std::clamp(position.x, 8.0f, std::max(8.0f, win.width - size - 8.0f)),
+        std::clamp(position.y, 8.0f, std::max(8.0f, win.height - size - 8.0f))
     };
 }
 
@@ -542,6 +566,12 @@ ComsPlusChatOverlay* activeChatOverlay() {
 void collapseActiveChatOverlay() {
     if (g_activeOverlay) {
         g_activeOverlay->collapse();
+    }
+}
+
+void toggleActiveChatOverlay() {
+    if (g_activeOverlay) {
+        g_activeOverlay->togglePanel();
     }
 }
 

@@ -54,11 +54,34 @@
         "input": false
       }
     },
+    "bubble-size": {
+      "type": "float",
+      "name": "Bubble size",
+      "default": 46,
+      "min": 34,
+      "max": 72,
+      "control": {
+        "slider": true,
+        "slider-step": 2,
+        "input": false
+      }
+    },
     "hide-bubble-main-menu": {
       "type": "bool",
       "name": "Hide bubble in main menu",
       "description": "Keeps the floating ComsPlus bubble out of the main menu.",
       "default": true
+    },
+    "open-chat-keybind": {
+      "type": "keybind",
+      "name": "Open chat",
+      "description": "Keyboard shortcut for opening ComsPlus chat on desktop.",
+      "default": {
+        "win": "C",
+        "android": []
+      },
+      "category": "gameplay",
+      "allow-in-text-inputs": false
     },
     "chat-name-mode": {
       "type": "string",

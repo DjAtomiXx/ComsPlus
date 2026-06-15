@@ -8,6 +8,8 @@ It provides:
 - an in-level ComsPlus chat overlay
 - optional Globed server-event chat when Globed 2.2.0+ is installed and connected
 - chat display-name mode: real name, fake name, or automatic
+- Android floating chat bubble with adjustable size and opacity
+- Windows Open chat keybind, defaulting to C
 
 ## Privacy
 
@@ -41,3 +43,5 @@ Android Geode Launcher path:
 ## Globed Chat
 
 The network chat uses Globed 2.2.0+ server events through the bundled MIT-licensed Soft Link API headers. Globed is still optional at runtime; if it is missing, outdated, offline, or not active in a level, ComsPlus keeps running and the overlay shows the exact status.
+
+Android opens the chat through the draggable bubble. Windows opens it through the Open chat keybind in Geode's keybind menu; the default is C.

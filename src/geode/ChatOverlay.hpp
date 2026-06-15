@@ -25,6 +25,7 @@ public:
     void tick(float dt);
     void onSend(cocos2d::CCObject*);
     void collapse();
+    void togglePanel();
     void raiseToScene();
 
 private:
@@ -67,11 +68,14 @@ private:
     DragMode m_dragMode = DragMode::None;
     bool m_expanded = false;
     bool m_dragged = false;
+    float m_lastBubbleSize = 0.0f;
+    float m_lastBubbleOpacity = 0.0f;
     float m_elapsed = 0.0f;
 };
 
 ComsPlusChatOverlay* activeChatOverlay();
 void collapseActiveChatOverlay();
+void toggleActiveChatOverlay();
 void raiseActiveChatOverlay();
 
 } // namespace comsplus

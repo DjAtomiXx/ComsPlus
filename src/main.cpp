@@ -3,6 +3,7 @@
 #include "PrivacyNames.hpp"
 
 #include <Geode/Geode.hpp>
+#include <Geode/loader/SettingV3.hpp>
 #include <Geode/modify/AccountLayer.hpp>
 #include <Geode/modify/CCLabelBMFont.hpp>
 #include <Geode/modify/CCLabelTTF.hpp>
@@ -34,6 +35,16 @@ void applyPrivacyTo(CCNode* node) {
 $execute {
     log::info("ComsPlus loaded");
     comsplus::GlobedBridge::get().initialize();
+
+#ifndef GEODE_IS_ANDROID
+    listenForKeybindSettingPresses("open-chat-keybind", [](Keybind const&, bool down, bool repeat, double) {
+        if (!down || repeat || !comsplus::readSettings().chatEnabled) {
+            return ListenerResult::Propagate;
+        }
+        comsplus::toggleActiveChatOverlay();
+        return ListenerResult::Stop;
+    });
+#endif
 }
 
 class $modify(ComsPlusPlayLayer, PlayLayer) {
