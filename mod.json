@@ -6,12 +6,12 @@
   },
   "id": "exploited.comsplus",
   "name": "ComsPlus",
-  "version": "1.0.2",
+  "version": "1.0.10",
   "developer": "Exploited",
   "description": "Local privacy display names and Globed-backed ComsPlus chat.",
   "dependencies": {
     "dankmeme.globed2": {
-      "version": ">=2.1.4",
+      "version": ">=2.2.0",
       "required": false
     }
   },
@@ -78,7 +78,8 @@
       "description": "Keyboard shortcut for opening ComsPlus chat on desktop.",
       "default": "C",
       "category": "gameplay",
-      "allow-in-text-inputs": false
+      "allow-in-text-inputs": false,
+      "platforms": ["win"]
     },
     "chat-name-mode": {
       "type": "string",
@@ -98,6 +99,23 @@
         "slider-step": 0.02,
         "input": false
       }
+    },
+    "own-message-color-mode": {
+      "type": "string",
+      "name": "Own message color",
+      "description": "Controls the name color attached to messages you send.",
+      "default": "default",
+      "one-of": ["default", "custom", "rainbow"]
+    },
+    "own-message-primary-color": {
+      "type": "color",
+      "name": "Message primary color",
+      "default": "#73FFD6"
+    },
+    "own-message-secondary-color": {
+      "type": "color",
+      "name": "Message secondary color",
+      "default": "#FF4F7D"
     },
     "desktop-panel-width": {
       "type": "float",

@@ -59,11 +59,47 @@ int main() {
     CHECK(decoded->text == "hello");
     CHECK(decoded->timestamp == 1234);
 
+    message.levelId = 9001;
+    message.levelName = "Drillbit";
+    message.colorMode = ChatColorMode::Rainbow;
+    message.primaryColor = "73FFD6";
+    message.secondaryColor = "FF4F7D";
+    message.authorRole = ChatAuthorRole::Dev;
+    auto styled = decodePayload(encodePayload(message));
+    CHECK(styled.has_value());
+    CHECK(styled->levelId == 9001);
+    CHECK(styled->levelName == "Drillbit");
+    CHECK(styled->colorMode == ChatColorMode::Rainbow);
+    CHECK(styled->primaryColor == "73FFD6");
+    CHECK(styled->secondaryColor == "FF4F7D");
+    CHECK(styled->authorRole == ChatAuthorRole::Dev);
+
     ChatMessage systemMessage{1, "joined", 42, "Hidden", "", "joined the chat from Drillbit", 1235, ChatMessageKind::System};
     auto encodedSystem = encodePayload(systemMessage);
     auto decodedSystem = decodePayload(encodedSystem);
     CHECK(decodedSystem.has_value());
     CHECK(decodedSystem->kind == ChatMessageKind::System);
+
+    ChatMessage moderationMessage;
+    moderationMessage.messageId = "ban";
+    moderationMessage.accountId = 42;
+    moderationMessage.displayName = "Hidden";
+    moderationMessage.iconData = "";
+    moderationMessage.text = "banned Target. Reason: spam";
+    moderationMessage.timestamp = 1236;
+    moderationMessage.kind = ChatMessageKind::Moderation;
+    moderationMessage.authorRole = ChatAuthorRole::Dev;
+    moderationMessage.moderationAction = ChatModerationAction::Ban;
+    moderationMessage.targetName = "Target";
+    moderationMessage.targetAccountId = 123;
+    moderationMessage.expiresAt = 0;
+    auto decodedModeration = decodePayload(encodePayload(moderationMessage));
+    CHECK(decodedModeration.has_value());
+    CHECK(decodedModeration->kind == ChatMessageKind::Moderation);
+    CHECK(decodedModeration->authorRole == ChatAuthorRole::Dev);
+    CHECK(decodedModeration->moderationAction == ChatModerationAction::Ban);
+    CHECK(decodedModeration->targetName == "Target");
+    CHECK(decodedModeration->targetAccountId == 123);
     CHECK(decodedSystem->displayName == "Hidden");
     CHECK(decodedSystem->text == "joined the chat from Drillbit");
 

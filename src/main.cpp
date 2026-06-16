@@ -5,16 +5,19 @@
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
 #include <Geode/modify/AccountLayer.hpp>
-#include <Geode/modify/CCKeyboardDispatcher.hpp>
 #include <Geode/modify/CCLabelBMFont.hpp>
 #include <Geode/modify/CCLabelTTF.hpp>
-#include <Geode/modify/GJAccountSettingsLayer.hpp>
 #include <Geode/modify/GJGarageLayer.hpp>
 #include <Geode/modify/MenuLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/ProfilePage.hpp>
 #include <Geode/utils/Keyboard.hpp>
+
+#ifndef GEODE_IS_ANDROID
+#include <Geode/modify/CCKeyboardDispatcher.hpp>
+#include <Geode/modify/GJAccountSettingsLayer.hpp>
+#endif
 
 #include <chrono>
 #include <vector>
@@ -25,9 +28,29 @@ namespace {
 
 std::string g_lastFakeName;
 
+#ifdef GEODE_IS_ANDROID
+std::string privacyNodeName(CCNode* node) {
+    if (!node) return "<null>";
+    auto id = std::string(node->getID());
+    if (id.empty()) id = "<no-id>";
+    return id + " tag=" + std::to_string(node->getTag());
+}
+#endif
+
 void applyPrivacyTo(CCNode* node) {
+    if (!node) {
+#ifdef GEODE_IS_ANDROID
+        log::debug("ComsPlus privacy pass skipped null root");
+#endif
+        return;
+    }
+
     auto settings = comsplus::readSettings();
     if (!settings.privacyEnabled) return;
+
+#ifdef GEODE_IS_ANDROID
+    log::debug("ComsPlus privacy pass start at {}", privacyNodeName(node));
+#endif
 
     auto fake = settings.fakeName;
     auto count = 0;
@@ -42,6 +65,10 @@ void applyPrivacyTo(CCNode* node) {
     if (count > 0) {
         log::debug("ComsPlus replaced {} local name label(s)", count);
     }
+
+#ifdef GEODE_IS_ANDROID
+    log::debug("ComsPlus privacy pass end at {} replaced {}", privacyNodeName(node), count);
+#endif
 }
 
 class ComsPlusPrivacyRefresher final : public CCNode {
@@ -87,6 +114,51 @@ void refreshCurrentScenePrivacy() {
     if (auto scene = CCDirector::sharedDirector()->getRunningScene()) {
         applyPrivacyTo(scene);
     }
+}
+
+CCNode* bestChatOverlayParent(CCNode* fallback = nullptr) {
+    if (fallback) {
+        return fallback;
+    }
+    if (auto scene = CCDirector::sharedDirector()->getRunningScene()) {
+        return scene;
+    }
+    if (auto gm = GameManager::get()) {
+        if (gm->m_playLayer) {
+            return gm->m_playLayer;
+        }
+    }
+    return nullptr;
+}
+
+void attachChatOverlayTo(comsplus::ComsPlusChatOverlay* overlay, CCNode* parent) {
+    if (!overlay || !parent) return;
+    overlay->moveToParent(parent, 1000000);
+}
+
+bool ensureChatOverlay(CCNode* fallback = nullptr) {
+    if (!comsplus::readSettings().chatEnabled) return false;
+
+    auto parent = bestChatOverlayParent(fallback);
+    if (auto overlay = comsplus::activeChatOverlay()) {
+        overlay->setVisible(true);
+        if (parent) {
+            attachChatOverlayTo(overlay, parent);
+        } else {
+            overlay->raiseToScene();
+        }
+        return true;
+    }
+
+    if (!parent) return false;
+    if (auto overlay = comsplus::ComsPlusChatOverlay::create()) {
+        parent->addChild(overlay, 1000000);
+#ifdef GEODE_IS_ANDROID
+        log::debug("ComsPlus mobile chat overlay attached");
+#endif
+        return true;
+    }
+    return false;
 }
 
 #ifndef GEODE_IS_ANDROID
@@ -151,25 +223,6 @@ bool isTextInputActive() {
     return dispatcher && dispatcher->hasDelegate();
 }
 
-bool ensureChatOverlay() {
-    if (comsplus::activeChatOverlay()) return true;
-
-    auto scene = CCDirector::sharedDirector()->getRunningScene();
-    auto parent = static_cast<CCNode*>(scene);
-    if (!parent) {
-        if (auto gm = GameManager::get()) {
-            parent = gm->m_playLayer;
-        }
-    }
-    if (!parent) return false;
-
-    if (auto overlay = comsplus::ComsPlusChatOverlay::create()) {
-        parent->addChild(overlay, 100000);
-        return true;
-    }
-    return false;
-}
-
 bool openDesktopChat(bool respectTextInput, bool debounce) {
     if (!comsplus::readSettings().chatEnabled) return false;
     if (respectTextInput && isTextInputActive()) return false;
@@ -185,7 +238,6 @@ bool openDesktopChat(bool respectTextInput, bool debounce) {
 
 $execute {
     log::info("ComsPlus loaded");
-    comsplus::GlobedBridge::get().initialize();
 
 #ifndef GEODE_IS_ANDROID
     listenForKeybindSettingPresses("open-chat-keybind", [](Keybind const&, bool down, bool repeat, double) {
@@ -209,6 +261,13 @@ $execute {
     });
     listenForSettingChanges<std::string>("fake-name", [](std::string) {
         refreshCurrentScenePrivacy();
+    });
+    listenForSettingChanges<bool>("chat-enabled", [](bool enabled) {
+        if (enabled) {
+            ensureChatOverlay();
+        } else if (auto overlay = comsplus::activeChatOverlay()) {
+            overlay->removeOverlay();
+        }
     });
 }
 
@@ -236,20 +295,18 @@ class $modify(ComsPlusPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
 
-        auto settings = comsplus::readSettings();
-        if (settings.chatEnabled) {
-            auto scene = CCDirector::sharedDirector()->getRunningScene();
-            auto parent = scene ? static_cast<CCNode*>(scene) : static_cast<CCNode*>(this);
-            if (!parent->getChildByID("comsplus-chat-overlay"_spr)) {
-                if (auto overlay = comsplus::ComsPlusChatOverlay::create()) {
-                    parent->addChild(overlay, 100000);
-                }
-            }
-        }
-
+        ensureChatOverlay(this);
         applyPrivacyTo(this);
         ensurePrivacyRefresher();
+        this->scheduleOnce(schedule_selector(ComsPlusPlayLayer::delayedComsPlusSetup), 0.0f);
+        this->scheduleOnce(schedule_selector(ComsPlusPlayLayer::delayedComsPlusSetup), 0.2f);
         return true;
+    }
+
+    void delayedComsPlusSetup(float) {
+        ensureChatOverlay(this);
+        applyPrivacyTo(this);
+        ensurePrivacyRefresher();
     }
 
     void resume() {
@@ -261,9 +318,13 @@ class $modify(ComsPlusPlayLayer, PlayLayer) {
 class $modify(ComsPlusMenuLayer, MenuLayer) {
     bool init() {
         if (!MenuLayer::init()) return false;
-        applyPrivacyTo(this);
+        this->scheduleOnce(schedule_selector(ComsPlusMenuLayer::delayedPrivacyRefresh), 0.0f);
         ensurePrivacyRefresher();
         return true;
+    }
+
+    void delayedPrivacyRefresh(float) {
+        applyPrivacyTo(this);
     }
 };
 
@@ -306,6 +367,7 @@ class $modify(ComsPlusAccountLayer, AccountLayer) {
     }
 };
 
+#ifndef GEODE_IS_ANDROID
 class $modify(ComsPlusAccountSettingsLayer, GJAccountSettingsLayer) {
     bool init(int accountId) {
         if (!GJAccountSettingsLayer::init(accountId)) return false;
@@ -316,6 +378,7 @@ class $modify(ComsPlusAccountSettingsLayer, GJAccountSettingsLayer) {
         return true;
     }
 };
+#endif
 
 class $modify(ComsPlusPauseLayer, PauseLayer) {
     void customSetup() {

@@ -14,7 +14,25 @@ enum class ChatNameMode {
 
 enum class ChatMessageKind {
     User,
-    System
+    System,
+    Moderation
+};
+
+enum class ChatColorMode {
+    Default,
+    Custom,
+    Rainbow
+};
+
+enum class ChatAuthorRole {
+    None,
+    Dev
+};
+
+enum class ChatModerationAction {
+    None,
+    Ban,
+    TempBan
 };
 
 struct DisplayNameSettings {
@@ -32,6 +50,16 @@ struct ChatMessage {
     std::string text;
     std::int64_t timestamp = 0;
     ChatMessageKind kind = ChatMessageKind::User;
+    std::int64_t levelId = 0;
+    std::string levelName;
+    ChatColorMode colorMode = ChatColorMode::Default;
+    std::string primaryColor;
+    std::string secondaryColor;
+    ChatAuthorRole authorRole = ChatAuthorRole::None;
+    ChatModerationAction moderationAction = ChatModerationAction::None;
+    std::string targetName;
+    std::int64_t targetAccountId = 0;
+    std::int64_t expiresAt = 0;
 };
 
 class RateLimiter {

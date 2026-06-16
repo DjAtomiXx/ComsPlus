@@ -12,6 +12,7 @@ namespace {
 constexpr int kProtocolVersion = 1;
 constexpr std::size_t kMaxNameLength = 24;
 constexpr std::size_t kMaxMessageLength = 120;
+constexpr std::size_t kMaxPayloadLength = 768;
 
 std::string sanitizeText(std::string const& input, std::size_t maxLength) {
     std::string out;
@@ -151,14 +152,80 @@ std::optional<std::int64_t> extractInt(std::string_view payload, std::string_vie
 }
 
 std::string_view kindToWire(ChatMessageKind kind) {
-    return kind == ChatMessageKind::System ? "system" : "user";
+    switch (kind) {
+        case ChatMessageKind::System:
+            return "system";
+        case ChatMessageKind::Moderation:
+            return "mod";
+        case ChatMessageKind::User:
+        default:
+            return "user";
+    }
+}
+
+std::string_view colorModeToWire(ChatColorMode mode) {
+    switch (mode) {
+        case ChatColorMode::Custom:
+            return "custom";
+        case ChatColorMode::Rainbow:
+            return "rainbow";
+        case ChatColorMode::Default:
+        default:
+            return "default";
+    }
+}
+
+std::string_view roleToWire(ChatAuthorRole role) {
+    return role == ChatAuthorRole::Dev ? "dev" : "none";
+}
+
+std::string_view moderationActionToWire(ChatModerationAction action) {
+    switch (action) {
+        case ChatModerationAction::Ban:
+            return "ban";
+        case ChatModerationAction::TempBan:
+            return "tempban";
+        case ChatModerationAction::None:
+        default:
+            return "none";
+    }
 }
 
 ChatMessageKind parseKind(std::optional<std::string> const& kind) {
     if (kind && *kind == "system") {
         return ChatMessageKind::System;
     }
+    if (kind && *kind == "mod") {
+        return ChatMessageKind::Moderation;
+    }
     return ChatMessageKind::User;
+}
+
+ChatColorMode parseColorMode(std::optional<std::string> const& mode) {
+    if (mode && *mode == "custom") {
+        return ChatColorMode::Custom;
+    }
+    if (mode && *mode == "rainbow") {
+        return ChatColorMode::Rainbow;
+    }
+    return ChatColorMode::Default;
+}
+
+ChatAuthorRole parseRole(std::optional<std::string> const& role) {
+    if (role && *role == "dev") {
+        return ChatAuthorRole::Dev;
+    }
+    return ChatAuthorRole::None;
+}
+
+ChatModerationAction parseModerationAction(std::optional<std::string> const& action) {
+    if (action && *action == "ban") {
+        return ChatModerationAction::Ban;
+    }
+    if (action && *action == "tempban") {
+        return ChatModerationAction::TempBan;
+    }
+    return ChatModerationAction::None;
 }
 
 } // namespace
@@ -229,23 +296,37 @@ std::string encodePayload(ChatMessage const& message) {
     sanitized.displayName = sanitizeName(sanitized.displayName);
     sanitized.iconData = sanitizeText(sanitized.iconData, 64);
     sanitized.text = sanitizeMessage(sanitized.text);
+    sanitized.levelName = sanitizeText(sanitized.levelName, 48);
+    sanitized.primaryColor = sanitizeText(sanitized.primaryColor, 8);
+    sanitized.secondaryColor = sanitizeText(sanitized.secondaryColor, 8);
+    sanitized.targetName = sanitizeName(sanitized.targetName);
 
     std::ostringstream out;
     out << "{"
         << "\"v\":" << sanitized.protocolVersion << ","
         << "\"kind\":\"" << kindToWire(sanitized.kind) << "\","
+        << "\"role\":\"" << roleToWire(sanitized.authorRole) << "\","
         << "\"id\":\"" << escapeJson(sanitized.messageId) << "\","
         << "\"aid\":" << sanitized.accountId << ","
+        << "\"lid\":" << sanitized.levelId << ","
+        << "\"level\":\"" << escapeJson(sanitized.levelName) << "\","
         << "\"name\":\"" << escapeJson(sanitized.displayName) << "\","
         << "\"icon\":\"" << escapeJson(sanitized.iconData) << "\","
         << "\"text\":\"" << escapeJson(sanitized.text) << "\","
+        << "\"cm\":\"" << colorModeToWire(sanitized.colorMode) << "\","
+        << "\"c1\":\"" << escapeJson(sanitized.primaryColor) << "\","
+        << "\"c2\":\"" << escapeJson(sanitized.secondaryColor) << "\","
+        << "\"act\":\"" << moderationActionToWire(sanitized.moderationAction) << "\","
+        << "\"target\":\"" << escapeJson(sanitized.targetName) << "\","
+        << "\"taid\":" << sanitized.targetAccountId << ","
+        << "\"exp\":" << sanitized.expiresAt << ","
         << "\"ts\":" << sanitized.timestamp
         << "}";
     return out.str();
 }
 
 std::optional<ChatMessage> decodePayload(std::string const& payload) {
-    if (payload.size() > 512 || payload.empty() || payload.front() != '{') {
+    if (payload.size() > kMaxPayloadLength || payload.empty() || payload.front() != '{') {
         return std::nullopt;
     }
 
@@ -261,6 +342,16 @@ std::optional<ChatMessage> decodePayload(std::string const& payload) {
     auto text = extractString(payload, "text");
     auto timestamp = extractInt(payload, "ts");
     auto kind = extractString(payload, "kind");
+    auto role = extractString(payload, "role");
+    auto levelId = extractInt(payload, "lid");
+    auto levelName = extractString(payload, "level");
+    auto colorMode = extractString(payload, "cm");
+    auto primaryColor = extractString(payload, "c1");
+    auto secondaryColor = extractString(payload, "c2");
+    auto moderationAction = extractString(payload, "act");
+    auto targetName = extractString(payload, "target");
+    auto targetAccountId = extractInt(payload, "taid");
+    auto expiresAt = extractInt(payload, "exp");
 
     if (!messageId || !accountId || !name || !icon || !text || !timestamp) {
         return std::nullopt;
@@ -269,12 +360,22 @@ std::optional<ChatMessage> decodePayload(std::string const& payload) {
     ChatMessage message;
     message.protocolVersion = static_cast<int>(*version);
     message.kind = parseKind(kind);
+    message.authorRole = parseRole(role);
+    message.colorMode = parseColorMode(colorMode);
+    message.moderationAction = parseModerationAction(moderationAction);
     message.messageId = sanitizeText(*messageId, 48);
     message.accountId = *accountId;
+    message.levelId = levelId.value_or(0);
+    message.levelName = sanitizeText(levelName.value_or(""), 48);
     message.displayName = sanitizeName(*name);
     message.iconData = sanitizeText(*icon, 64);
     message.text = sanitizeMessage(*text);
     message.timestamp = *timestamp;
+    message.primaryColor = sanitizeText(primaryColor.value_or(""), 8);
+    message.secondaryColor = sanitizeText(secondaryColor.value_or(""), 8);
+    message.targetName = sanitizeName(targetName.value_or(""));
+    message.targetAccountId = targetAccountId.value_or(0);
+    message.expiresAt = expiresAt.value_or(0);
 
     if (message.messageId.empty() || message.displayName.empty() || message.text.empty()) {
         return std::nullopt;

@@ -2,8 +2,10 @@
 
 #include <Geode/Geode.hpp>
 #include <Geode/Bindings.hpp>
+#include <Geode/utils/cocos.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <vector>
 
@@ -20,6 +22,16 @@ ChatNameMode parseMode(std::string mode) {
     if (mode == "real") return ChatNameMode::Real;
     if (mode == "fake") return ChatNameMode::Fake;
     return ChatNameMode::Auto;
+}
+
+ChatColorMode parseColorModeSetting(std::string mode) {
+    std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+
+    if (mode == "custom") return ChatColorMode::Custom;
+    if (mode == "rainbow") return ChatColorMode::Rainbow;
+    return ChatColorMode::Default;
 }
 
 template <typename T>
@@ -43,6 +55,9 @@ ComsPlusSettings readSettings() {
     settings.fakeName = settingOr<std::string>("fake-name", settings.fakeName);
     settings.chatNameMode = parseMode(settingOr<std::string>("chat-name-mode", "auto"));
     settings.chatOpacity = static_cast<float>(settingOr<double>("chat-opacity", settings.chatOpacity));
+    settings.ownMessageColorMode = parseColorModeSetting(settingOr<std::string>("own-message-color-mode", "default"));
+    settings.ownMessagePrimaryColor = settingOr<ccColor3B>("own-message-primary-color", settings.ownMessagePrimaryColor);
+    settings.ownMessageSecondaryColor = settingOr<ccColor3B>("own-message-secondary-color", settings.ownMessageSecondaryColor);
     settings.desktopPanelWidth = static_cast<float>(settingOr<double>("desktop-panel-width", settings.desktopPanelWidth));
     settings.desktopPanelHeight = static_cast<float>(settingOr<double>("desktop-panel-height", settings.desktopPanelHeight));
     settings.bubbleOpacity = static_cast<float>(settingOr<double>("bubble-opacity", settings.bubbleOpacity));

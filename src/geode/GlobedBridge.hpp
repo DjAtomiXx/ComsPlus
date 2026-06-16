@@ -7,21 +7,36 @@
 
 namespace comsplus {
 
+enum class ChatSendResult {
+    Sent,
+    Queued,
+    Failed
+};
+
 class GlobedBridge {
 public:
     static GlobedBridge& get();
 
     void initialize();
+    void maintain();
     bool isAvailable() const;
     bool isConnected() const;
     std::string statusText() const;
-    bool sendChat(ChatMessage const& message);
+    ChatSendResult sendChat(ChatMessage const& message);
     std::vector<ChatMessage> pollReceived();
 
 private:
     GlobedBridge() = default;
 
+    void installListener();
+    void registerEvent();
+    bool sendNow(ChatMessage const& message);
+    void queuePending(ChatMessage const& message);
+
     bool m_initialized = false;
+    bool m_listenerInstalled = false;
+    bool m_eventRegistered = false;
+    std::vector<ChatMessage> m_pending;
     std::vector<ChatMessage> m_received;
 };
 

@@ -2,6 +2,8 @@
 
 #include "ChatCore.hpp"
 
+#include <Geode/Geode.hpp>
+
 #include <string>
 #include <vector>
 
@@ -13,6 +15,9 @@ struct ComsPlusSettings {
     std::string fakeName = "ComsPlayer";
     ChatNameMode chatNameMode = ChatNameMode::Auto;
     float chatOpacity = 0.78f;
+    ChatColorMode ownMessageColorMode = ChatColorMode::Default;
+    cocos2d::ccColor3B ownMessagePrimaryColor = {115, 255, 214};
+    cocos2d::ccColor3B ownMessageSecondaryColor = {255, 79, 125};
     float desktopPanelWidth = 336.0f;
     float desktopPanelHeight = 188.0f;
     float bubbleOpacity = 0.92f;

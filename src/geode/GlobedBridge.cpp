@@ -5,9 +5,8 @@
 #include <algorithm>
 #include <set>
 
-#if defined(COMSPLUS_HAS_GLOBED_HEADERS) && __has_include(<globed/soft-link/API.hpp>) && __has_include(<globed/core/Event.hpp>)
+#if defined(COMSPLUS_HAS_GLOBED_HEADERS) && __has_include(<globed/core/Event.hpp>)
     #include <globed/core/Event.hpp>
-    #include <globed/soft-link/API.hpp>
     #define COMSPLUS_WITH_GLOBED 1
 #else
     #define COMSPLUS_WITH_GLOBED 0
@@ -19,30 +18,22 @@ namespace comsplus {
 namespace {
 
 constexpr char const* kEventId = "exploited.comsplus/chat";
-constexpr char const* kMinGlobedVersion = "2.1.4";
+constexpr char const* kMinGlobedVersion = "2.2.0";
+constexpr std::size_t kMaxPayloadLength = 768;
+constexpr std::size_t kMaxReceivedMessages = 40;
+constexpr std::size_t kMaxPendingMessages = 18;
+constexpr std::size_t kMaxSeenMessages = 256;
 std::set<std::string> g_seenMessages;
 
+bool rememberMessage(std::string const& messageId) {
+    if (messageId.empty()) return false;
+    if (g_seenMessages.size() > kMaxSeenMessages) {
+        g_seenMessages.clear();
+    }
+    return g_seenMessages.insert(messageId).second;
+}
+
 #if COMSPLUS_WITH_GLOBED
-struct ComsPlusGlobedEvent : globed::ServerEvent<ComsPlusGlobedEvent, globed::EventServer::Game> {
-    static constexpr auto Id = "exploited.comsplus/chat"_spr;
-
-    std::string payload;
-
-    ComsPlusGlobedEvent() = default;
-    explicit ComsPlusGlobedEvent(std::string data) : payload(std::move(data)) {}
-
-    std::vector<uint8_t> encode() const {
-        return {payload.begin(), payload.end()};
-    }
-
-    static geode::Result<ComsPlusGlobedEvent> decode(std::span<const uint8_t> data) {
-        if (data.size() > 512) {
-            return geode::Err("ComsPlus chat payload is too large");
-        }
-        return geode::Ok(ComsPlusGlobedEvent(std::string(data.begin(), data.end())));
-    }
-};
-
 std::optional<geode::ListenerHandle> g_listener;
 #endif
 
@@ -59,20 +50,66 @@ void GlobedBridge::initialize() {
 
 #if COMSPLUS_WITH_GLOBED
     globed::api::waitForGlobed([this] {
-        globed::api::net::registerEvent(kEventId, globed::EventServer::Game);
-        g_listener = ComsPlusGlobedEvent::listen([this](ComsPlusGlobedEvent const& event, globed::EventOptions const&) {
-            auto decoded = decodePayload(event.payload);
-            if (!decoded.has_value()) return;
-            if (!g_seenMessages.insert(decoded->messageId).second) return;
-            m_received.push_back(std::move(*decoded));
-            if (m_received.size() > 30) {
-                m_received.erase(m_received.begin(), m_received.begin() + static_cast<long>(m_received.size() - 30));
-            }
-        });
-        log::info("ComsPlus Globed event bridge initialized");
+        this->maintain();
     });
 #else
     log::warn("ComsPlus built without Globed headers; network chat is disabled");
+#endif
+}
+
+void GlobedBridge::installListener() {
+#if COMSPLUS_WITH_GLOBED
+    if (m_listenerInstalled) return;
+    m_listenerInstalled = true;
+
+    g_listener = globed::MessageEvent<globed::msg::EventsMessage>{false}.listen([this](globed::msg::EventsMessage const& data) {
+        for (auto const& event : data.events) {
+            if (event.name != kEventId) continue;
+            if (event.data.size() > kMaxPayloadLength) continue;
+
+            auto decoded = decodePayload(std::string(event.data.begin(), event.data.end()));
+            if (!decoded.has_value()) continue;
+            if (!rememberMessage(decoded->messageId)) continue;
+            m_received.push_back(std::move(*decoded));
+            if (m_received.size() > kMaxReceivedMessages) {
+                m_received.erase(
+                    m_received.begin(),
+                    m_received.begin() + static_cast<long>(m_received.size() - kMaxReceivedMessages)
+                );
+            }
+        }
+    });
+#endif
+}
+
+void GlobedBridge::registerEvent() {
+#if COMSPLUS_WITH_GLOBED
+    if (!globed::api::available() || !globed::api::isAtLeast(kMinGlobedVersion)) return;
+    globed::api::net::registerEvent(kEventId, globed::EventServer::Both);
+    m_eventRegistered = true;
+#endif
+}
+
+void GlobedBridge::maintain() {
+    initialize();
+
+#if COMSPLUS_WITH_GLOBED
+    if (!isAvailable()) return;
+
+    if (!m_eventRegistered) {
+        registerEvent();
+    }
+    installListener();
+
+    if (!isConnected() || m_pending.empty()) return;
+
+    auto pending = std::move(m_pending);
+    m_pending.clear();
+    for (auto const& message : pending) {
+        if (!sendNow(message)) {
+            queuePending(message);
+        }
+    }
 #endif
 }
 
@@ -94,30 +131,31 @@ bool GlobedBridge::isConnected() const {
 
 std::string GlobedBridge::statusText() const {
 #if COMSPLUS_WITH_GLOBED
+    auto queued = m_pending.empty() ? "" : " queued " + std::to_string(m_pending.size());
     if (!globed::api::available()) return "Globed not loaded";
-    if (!globed::api::isAtLeast(kMinGlobedVersion)) return "Globed 2.1.4+ required";
-    if (!globed::api::net::isConnected()) return "Globed offline";
-    if (!globed::api::game::isActive()) return "Join a Globed level";
-    return "Globed connected";
+    if (!globed::api::isAtLeast(kMinGlobedVersion)) return "Globed 2.2.0+ required";
+    if (!globed::api::net::isConnected()) return "Globed offline" + queued;
+    if (!globed::api::game::isActive()) return "Join a Globed level" + queued;
+    return "Globed connected" + queued;
 #else
     return "Globed bridge unavailable";
 #endif
 }
 
-bool GlobedBridge::sendChat(ChatMessage const& message) {
+bool GlobedBridge::sendNow(ChatMessage const& message) {
 #if COMSPLUS_WITH_GLOBED
     if (!isConnected()) return false;
     auto payload = encodePayload(message);
     if (!decodePayload(payload).has_value()) return false;
 
-    g_seenMessages.insert(message.messageId);
+    rememberMessage(message.messageId);
 
     globed::EventOptions options;
-    options.server = globed::EventServer::Game;
+    options.server = globed::EventServer::Both;
     options.reliable = true;
-    options.urgent = false;
+    options.urgent = true;
     options.sendBack = true;
-    ComsPlusGlobedEvent(std::move(payload)).send(options);
+    globed::api::net::sendEvent(kEventId, {payload.begin(), payload.end()}, options);
     return true;
 #else
     (void)message;
@@ -125,7 +163,45 @@ bool GlobedBridge::sendChat(ChatMessage const& message) {
 #endif
 }
 
+void GlobedBridge::queuePending(ChatMessage const& message) {
+    if (message.messageId.empty()) return;
+    auto exists = std::any_of(m_pending.begin(), m_pending.end(), [&](ChatMessage const& pending) {
+        return pending.messageId == message.messageId;
+    });
+    if (exists) return;
+
+    if (m_pending.size() >= kMaxPendingMessages) {
+        m_pending.erase(m_pending.begin());
+    }
+    m_pending.push_back(message);
+}
+
+ChatSendResult GlobedBridge::sendChat(ChatMessage const& message) {
+#if COMSPLUS_WITH_GLOBED
+    maintain();
+
+    auto payload = encodePayload(message);
+    if (!decodePayload(payload).has_value()) return ChatSendResult::Failed;
+    if (!isAvailable()) return ChatSendResult::Failed;
+
+    if (!isConnected()) {
+        queuePending(message);
+        return ChatSendResult::Queued;
+    }
+
+    if (sendNow(message)) {
+        return ChatSendResult::Sent;
+    }
+    queuePending(message);
+    return ChatSendResult::Queued;
+#else
+    (void)message;
+    return ChatSendResult::Failed;
+#endif
+}
+
 std::vector<ChatMessage> GlobedBridge::pollReceived() {
+    maintain();
     auto out = std::move(m_received);
     m_received.clear();
     return out;
