@@ -542,10 +542,12 @@ void ComsPlusChatOverlay::buildPanel() {
     m_messageRoot->setPosition({9.0f, inputHeight + 11.0f});
     m_panelRoot->addChild(m_messageRoot);
 
-    m_panelRoot->addChild(rect({2, 5, 13, 174}, {size.width - 102.0f, inputHeight}, {10.0f, 7.0f}));
+    m_inputHitOrigin = CCPoint{10.0f, 7.0f};
+    m_inputHitSize = CCSize{size.width - 102.0f, inputHeight};
+    m_panelRoot->addChild(rect({2, 5, 13, 174}, m_inputHitSize, m_inputHitOrigin));
     auto inputBorder = CCNode::create();
-    inputBorder->setPosition({10.0f, 7.0f});
-    addBorder(inputBorder, {size.width - 102.0f, inputHeight}, {accent.r, accent.g, accent.b, 92}, 1.0f);
+    inputBorder->setPosition(m_inputHitOrigin);
+    addBorder(inputBorder, m_inputHitSize, {accent.r, accent.g, accent.b, 92}, 1.0f);
     m_panelRoot->addChild(inputBorder);
 
     m_input = TextInput::create(size.width - 110.0f, "Message", "chatFont.fnt");
@@ -622,6 +624,16 @@ void ComsPlusChatOverlay::setExpanded(bool expanded) {
 
 void ComsPlusChatOverlay::refreshVisibility() {
     setExpanded(m_expanded);
+}
+
+bool ComsPlusChatOverlay::isExpanded() const {
+    return m_expanded;
+}
+
+bool ComsPlusChatOverlay::submitFromKeyboard() {
+    if (!m_expanded || !m_input) return false;
+    onSend(nullptr);
+    return true;
 }
 
 void ComsPlusChatOverlay::openPanel() {
@@ -1289,6 +1301,9 @@ bool ComsPlusChatOverlay::pointInBubble(CCPoint const& point) const {
 
 bool ComsPlusChatOverlay::pointInInput(CCPoint const& point) const {
     if (!m_input || !m_panelRoot) return false;
+    if (pointInRect(point, add(m_panelPosition, m_inputHitOrigin), m_inputHitSize)) {
+        return true;
+    }
     auto local = m_input->convertToNodeSpace(point);
     auto size = m_input->getContentSize();
     auto anchor = m_input->getAnchorPoint();

@@ -199,6 +199,11 @@ bool isOpenChatKey(KeyboardInputData const& data) {
     return false;
 }
 
+bool isSubmitChatKey(KeyboardInputData const& data) {
+    return data.action == KeyboardInputData::Action::Press &&
+        (data.key == KEY_Enter || data.key == KEY_NumEnter);
+}
+
 bool hasPlainCChatKeybind() {
     auto plainC = Keybind(KEY_C, KeyboardModifier::None);
     for (auto const& bind : openChatKeybinds()) {
@@ -233,6 +238,13 @@ bool openDesktopChat(bool respectTextInput, bool debounce) {
     comsplus::toggleActiveChatOverlay();
     return true;
 }
+
+bool submitDesktopChat(bool debounce) {
+    if (debounce && !consumeChatShortcut()) return false;
+    auto overlay = comsplus::activeChatOverlay();
+    if (!overlay || !overlay->isExpanded()) return false;
+    return overlay->submitFromKeyboard();
+}
 #endif
 
 } // namespace
@@ -247,6 +259,9 @@ $execute {
     });
 
     KeyboardInputEvent().listen([](KeyboardInputData& data) {
+        if (isSubmitChatKey(data) && submitDesktopChat(true)) {
+            return ListenerResult::Stop;
+        }
         if (!isOpenChatKey(data)) {
             return ListenerResult::Propagate;
         }
@@ -284,6 +299,14 @@ $execute {
 class $modify(ComsPlusKeyboardDispatcher, CCKeyboardDispatcher) {
     bool dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown, bool isKeyRepeat, double timestamp) {
         auto handled = CCKeyboardDispatcher::dispatchKeyboardMSG(key, isKeyDown, isKeyRepeat, timestamp);
+
+        if (
+            (key == KEY_Enter || key == KEY_NumEnter) &&
+            isKeyDown &&
+            !isKeyRepeat
+        ) {
+            submitDesktopChat(true);
+        }
 
         if (
             key == KEY_C &&

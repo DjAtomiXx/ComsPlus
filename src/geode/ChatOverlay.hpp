@@ -34,6 +34,8 @@ public:
     void moveToParent(cocos2d::CCNode* parent, int zOrder);
     void removeOverlay();
     void refreshVisibility();
+    bool isExpanded() const;
+    bool submitFromKeyboard();
 
 private:
     enum class DragMode {
@@ -111,6 +113,8 @@ private:
     std::unique_ptr<RateLimiter> m_rateLimiter;
     cocos2d::CCPoint m_bubblePosition = {0.0f, 0.0f};
     cocos2d::CCPoint m_panelPosition = {0.0f, 0.0f};
+    cocos2d::CCPoint m_inputHitOrigin = {0.0f, 0.0f};
+    cocos2d::CCSize m_inputHitSize = {0.0f, 0.0f};
     cocos2d::CCPoint m_touchStart = {0.0f, 0.0f};
     cocos2d::CCPoint m_dragStart = {0.0f, 0.0f};
     std::int64_t m_pressedAccountId = 0;
