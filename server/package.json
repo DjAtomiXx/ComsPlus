@@ -1,0 +1,13 @@
+{
+  "name": "comsplus-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small ComsPlus main menu chat relay server.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node comsplus-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

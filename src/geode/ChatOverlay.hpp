@@ -3,6 +3,7 @@
 #include "ChatCore.hpp"
 #include "ComsPlusSettings.hpp"
 #include "GlobedBridge.hpp"
+#include "GlobalChatBridge.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/ui/TextInput.hpp>
@@ -32,12 +33,14 @@ public:
     void raiseToScene();
     void moveToParent(cocos2d::CCNode* parent, int zOrder);
     void removeOverlay();
+    void refreshVisibility();
 
 private:
     enum class DragMode {
         None,
         Bubble,
-        Panel
+        Panel,
+        Message
     };
 
     struct RenderedMessage {
@@ -51,6 +54,11 @@ private:
         std::string reason;
         std::int64_t expiresAt = 0;
         std::string moderatorName;
+    };
+
+    struct MessageHit {
+        cocos2d::CCRect rect;
+        std::int64_t accountId = 0;
     };
 
     void buildBubble();
@@ -81,10 +89,13 @@ private:
     std::optional<std::int64_t> accountIdForName(std::string const& name) const;
     bool shouldDisplayMessage(ChatMessage const& message) const;
     bool hasRainbowMessages() const;
+    bool hasMessageId(std::string const& messageId) const;
     bool pointInBubble(cocos2d::CCPoint const& point) const;
     bool pointInInput(cocos2d::CCPoint const& point) const;
     bool pointInPanel(cocos2d::CCPoint const& point) const;
     bool pointInPanelHeader(cocos2d::CCPoint const& point) const;
+    std::optional<std::int64_t> accountIdAt(cocos2d::CCPoint const& point) const;
+    void openProfile(std::int64_t accountId);
     cocos2d::CCPoint clampedBubblePosition(cocos2d::CCPoint position) const;
     cocos2d::CCPoint clampedPanelPosition(cocos2d::CCPoint position) const;
 
@@ -95,12 +106,14 @@ private:
     cocos2d::CCLabelBMFont* m_status = nullptr;
     cocos2d::CCNode* m_messageRoot = nullptr;
     std::deque<RenderedMessage> m_messages;
+    std::vector<MessageHit> m_messageHits;
     std::vector<ChatBan> m_bans;
     std::unique_ptr<RateLimiter> m_rateLimiter;
     cocos2d::CCPoint m_bubblePosition = {0.0f, 0.0f};
     cocos2d::CCPoint m_panelPosition = {0.0f, 0.0f};
     cocos2d::CCPoint m_touchStart = {0.0f, 0.0f};
     cocos2d::CCPoint m_dragStart = {0.0f, 0.0f};
+    std::int64_t m_pressedAccountId = 0;
     DragMode m_dragMode = DragMode::None;
     bool m_expanded = false;
     bool m_dragged = false;

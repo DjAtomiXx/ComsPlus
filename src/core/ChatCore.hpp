@@ -35,6 +35,12 @@ enum class ChatModerationAction {
     TempBan
 };
 
+enum class ChatSendResult {
+    Sent,
+    Queued,
+    Failed
+};
+
 struct DisplayNameSettings {
     bool privacyEnabled = false;
     std::string fakeName;

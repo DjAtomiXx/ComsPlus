@@ -1,6 +1,6 @@
 # ComsPlus
 
-ComsPlus adds a local privacy display name and an in-level chat for players who use the mod together with Globed.
+ComsPlus adds a local privacy display name, in-level chat for Globed players, and an optional main menu chat.
 
 ## Privacy
 
@@ -8,8 +8,8 @@ The fake name is local UI text. It does not change your Geometry Dash account, a
 
 ## Chat
 
-On Android, the chat opens from a draggable floating bubble in levels. The bubble opacity and size can be adjusted in the mod settings.
+On Android, the chat opens from a draggable floating bubble. The bubble opacity and size can be adjusted in the mod settings.
 
 On Windows, the chat opens with the configurable Open chat keybind. The default key is C. Opening chat pauses the level, and pressing Resume hides the panel again.
 
-Messages are sent through Globed 2.2.0+ server events to other ComsPlus users connected to the same Globed level.
+Level messages are sent through Globed 2.1.4+ server events to other ComsPlus users connected to the same Globed level. Main menu messages use the ComsPlus relay at hexasystems.xyz.

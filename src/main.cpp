@@ -142,6 +142,7 @@ bool ensureChatOverlay(CCNode* fallback = nullptr) {
     auto parent = bestChatOverlayParent(fallback);
     if (auto overlay = comsplus::activeChatOverlay()) {
         overlay->setVisible(true);
+        overlay->refreshVisibility();
         if (parent) {
             attachChatOverlayTo(overlay, parent);
         } else {
@@ -269,6 +270,14 @@ $execute {
             overlay->removeOverlay();
         }
     });
+    listenForSettingChanges<bool>("hide-bubble-main-menu", [](bool) {
+        if (auto overlay = comsplus::activeChatOverlay()) {
+            overlay->refreshVisibility();
+        }
+    });
+    listenForSettingChanges<bool>("main-menu-chat-enabled", [](bool) {
+        ensureChatOverlay();
+    });
 }
 
 #ifndef GEODE_IS_ANDROID
@@ -318,13 +327,22 @@ class $modify(ComsPlusPlayLayer, PlayLayer) {
 class $modify(ComsPlusMenuLayer, MenuLayer) {
     bool init() {
         if (!MenuLayer::init()) return false;
+        ensureChatOverlay(this);
         this->scheduleOnce(schedule_selector(ComsPlusMenuLayer::delayedPrivacyRefresh), 0.0f);
+        this->scheduleOnce(schedule_selector(ComsPlusMenuLayer::delayedComsPlusSetup), 0.05f);
         ensurePrivacyRefresher();
         return true;
     }
 
     void delayedPrivacyRefresh(float) {
         applyPrivacyTo(this);
+    }
+
+    void delayedComsPlusSetup(float) {
+        ensureChatOverlay(this);
+        if (auto overlay = comsplus::activeChatOverlay()) {
+            overlay->refreshVisibility();
+        }
     }
 };
 

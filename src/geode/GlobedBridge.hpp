@@ -7,12 +7,6 @@
 
 namespace comsplus {
 
-enum class ChatSendResult {
-    Sent,
-    Queued,
-    Failed
-};
-
 class GlobedBridge {
 public:
     static GlobedBridge& get();

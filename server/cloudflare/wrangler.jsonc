@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "comsplus-relay",
+  "main": "src/index.ts",
+  "workers_dev": false,
+  "compatibility_date": "2026-06-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "hexasystems.xyz/comsplus*",
+      "zone_name": "hexasystems.xyz"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHAT_ROOMS",
+        "class_name": "ComsPlusRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ComsPlusRoom"]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

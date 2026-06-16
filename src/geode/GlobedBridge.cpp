@@ -4,9 +4,11 @@
 
 #include <algorithm>
 #include <set>
+#include <variant>
 
-#if defined(COMSPLUS_HAS_GLOBED_HEADERS) && __has_include(<globed/core/Event.hpp>)
-    #include <globed/core/Event.hpp>
+#if __has_include(<globed/soft-link/API.hpp>) && __has_include(<globed/core/data/Messages.hpp>)
+    #include <globed/soft-link/API.hpp>
+    #include <globed/core/data/Messages.hpp>
     #define COMSPLUS_WITH_GLOBED 1
 #else
     #define COMSPLUS_WITH_GLOBED 0
@@ -17,8 +19,8 @@ using namespace geode::prelude;
 namespace comsplus {
 namespace {
 
-constexpr char const* kEventId = "exploited.comsplus/chat";
-constexpr char const* kMinGlobedVersion = "2.2.0";
+constexpr uint16_t kEventType = 0xff42;
+constexpr char const* kMinGlobedVersion = "2.1.4";
 constexpr std::size_t kMaxPayloadLength = 768;
 constexpr std::size_t kMaxReceivedMessages = 40;
 constexpr std::size_t kMaxPendingMessages = 18;
@@ -34,7 +36,7 @@ bool rememberMessage(std::string const& messageId) {
 }
 
 #if COMSPLUS_WITH_GLOBED
-std::optional<geode::ListenerHandle> g_listener;
+std::optional<globed::MessageListener<globed::msg::LevelDataMessage>> g_listener;
 #endif
 
 } // namespace
@@ -49,9 +51,7 @@ void GlobedBridge::initialize() {
     m_initialized = true;
 
 #if COMSPLUS_WITH_GLOBED
-    globed::api::waitForGlobed([this] {
-        this->maintain();
-    });
+    maintain();
 #else
     log::warn("ComsPlus built without Globed headers; network chat is disabled");
 #endif
@@ -62,12 +62,14 @@ void GlobedBridge::installListener() {
     if (m_listenerInstalled) return;
     m_listenerInstalled = true;
 
-    g_listener = globed::MessageEvent<globed::msg::EventsMessage>{false}.listen([this](globed::msg::EventsMessage const& data) {
+    g_listener = globed::api::net::listen<globed::msg::LevelDataMessage>([this](globed::msg::LevelDataMessage& data) {
         for (auto const& event : data.events) {
-            if (event.name != kEventId) continue;
-            if (event.data.size() > kMaxPayloadLength) continue;
+            if (!event.is<globed::UnknownEvent>()) continue;
+            auto const& unknown = event.as<globed::UnknownEvent>();
+            if (unknown.type != kEventType) continue;
+            if (unknown.rawData.size() > kMaxPayloadLength) continue;
 
-            auto decoded = decodePayload(std::string(event.data.begin(), event.data.end()));
+            auto decoded = decodePayload(std::string(unknown.rawData.begin(), unknown.rawData.end()));
             if (!decoded.has_value()) continue;
             if (!rememberMessage(decoded->messageId)) continue;
             m_received.push_back(std::move(*decoded));
@@ -78,6 +80,7 @@ void GlobedBridge::installListener() {
                 );
             }
         }
+        return true;
     });
 #endif
 }
@@ -85,7 +88,6 @@ void GlobedBridge::installListener() {
 void GlobedBridge::registerEvent() {
 #if COMSPLUS_WITH_GLOBED
     if (!globed::api::available() || !globed::api::isAtLeast(kMinGlobedVersion)) return;
-    globed::api::net::registerEvent(kEventId, globed::EventServer::Both);
     m_eventRegistered = true;
 #endif
 }
@@ -133,7 +135,7 @@ std::string GlobedBridge::statusText() const {
 #if COMSPLUS_WITH_GLOBED
     auto queued = m_pending.empty() ? "" : " queued " + std::to_string(m_pending.size());
     if (!globed::api::available()) return "Globed not loaded";
-    if (!globed::api::isAtLeast(kMinGlobedVersion)) return "Globed 2.2.0+ required";
+    if (!globed::api::isAtLeast(kMinGlobedVersion)) return "Globed 2.1.4+ required";
     if (!globed::api::net::isConnected()) return "Globed offline" + queued;
     if (!globed::api::game::isActive()) return "Join a Globed level" + queued;
     return "Globed connected" + queued;
@@ -150,12 +152,10 @@ bool GlobedBridge::sendNow(ChatMessage const& message) {
 
     rememberMessage(message.messageId);
 
-    globed::EventOptions options;
-    options.server = globed::EventServer::Both;
-    options.reliable = true;
-    options.urgent = true;
-    options.sendBack = true;
-    globed::api::net::sendEvent(kEventId, {payload.begin(), payload.end()}, options);
+    globed::UnknownEvent event;
+    event.type = kEventType;
+    event.rawData.assign(payload.begin(), payload.end());
+    globed::api::net::queueGameEvent(globed::OutEvent(std::move(event)));
     return true;
 #else
     (void)message;

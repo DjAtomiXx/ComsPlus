@@ -4,14 +4,12 @@
 #include <Geode/Geode.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/utils/cocos.hpp>
-#include <Geode/utils/string.hpp>
 
 #include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cctype>
 #include <cmath>
-#include <filesystem>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -173,6 +171,11 @@ bool isMobileLayout() {
 #endif
 }
 
+bool isMainMenuContext() {
+    auto gm = GameManager::get();
+    return !gm || !gm->m_playLayer;
+}
+
 CCSize winSize() {
     return CCDirector::sharedDirector()->getWinSize();
 }
@@ -187,8 +190,8 @@ CCSize panelSize() {
         };
     }
     return {
-        std::min(336.0f, win.width - 24.0f),
-        std::min(188.0f, win.height - 34.0f)
+        std::min(448.0f, win.width - 12.0f),
+        std::min(254.0f, win.height - 16.0f)
     };
 }
 
@@ -217,22 +220,35 @@ CCLayerColor* rect(ccColor4B color, CCSize size, CCPoint position) {
     return layer;
 }
 
+ccColor4F color4f(ccColor4B color) {
+    return {
+        static_cast<float>(color.r) / 255.0f,
+        static_cast<float>(color.g) / 255.0f,
+        static_cast<float>(color.b) / 255.0f,
+        static_cast<float>(color.a) / 255.0f
+    };
+}
+
+CCDrawNode* disc(ccColor4B fill, float radius, CCPoint center, ccColor4B border = {0, 0, 0, 0}, float borderWidth = 0.0f) {
+    auto draw = CCDrawNode::create();
+    std::vector<CCPoint> points;
+    points.reserve(56);
+    for (auto i = 0; i < 56; ++i) {
+        auto angle = static_cast<float>(i) * 6.28318530718f / 56.0f;
+        points.push_back({
+            center.x + std::cos(angle) * radius,
+            center.y + std::sin(angle) * radius
+        });
+    }
+    draw->drawPolygon(points.data(), static_cast<unsigned int>(points.size()), color4f(fill), borderWidth, color4f(border));
+    return draw;
+}
+
 void addBorder(CCNode* parent, CCSize size, ccColor4B color, float thickness) {
     parent->addChild(rect(color, {size.width, thickness}, {0.0f, size.height - thickness}));
     parent->addChild(rect(color, {size.width, thickness}, {0.0f, 0.0f}));
     parent->addChild(rect(color, {thickness, size.height}, {0.0f, 0.0f}));
     parent->addChild(rect(color, {thickness, size.height}, {size.width - thickness, 0.0f}));
-}
-
-CCSprite* createBubbleIcon() {
-    auto logoPath = Mod::get()->getTempDir() / "logo.png";
-    if (std::filesystem::exists(logoPath)) {
-        auto path = utils::string::pathToString(logoPath);
-        if (auto sprite = CCSprite::create(path.c_str())) {
-            return sprite;
-        }
-    }
-    return CCSprite::create("comsplus-icon.png"_spr);
 }
 
 int parseIconPart(std::string const& iconData, std::string const& key, int fallback) {
@@ -272,7 +288,7 @@ std::string currentLevelName() {
             }
         }
     }
-    return "this level";
+    return isMainMenuContext() ? "Main Menu" : "this level";
 }
 
 std::int64_t currentLevelId() {
@@ -281,7 +297,7 @@ std::int64_t currentLevelId() {
             return static_cast<std::int64_t>(gm->m_playLayer->m_level->m_levelID);
         }
     }
-    return 0;
+    return isMainMenuContext() ? -1 : 0;
 }
 
 std::string currentLevelKey() {
@@ -341,9 +357,20 @@ ccColor3B messageBodyColor(ChatMessage const& message, bool local, float phase) 
 
 ccColor4B rowBackground(ChatMessage const& message, bool local, float phase) {
     auto accent = messageNameColor(message, local, phase);
-    auto base = local ? ccColor3B{11, 36, 34} : ccColor3B{29, 15, 23};
+    auto base = isMainMenuContext() ?
+        (local ? ccColor3B{8, 35, 58} : ccColor3B{12, 22, 45}) :
+        (local ? ccColor3B{11, 36, 34} : ccColor3B{29, 15, 23});
     auto mixed = blendColor(base, accent, local ? 0.18f : 0.12f);
     return {mixed.r, mixed.g, mixed.b, local ? static_cast<GLubyte>(94) : static_cast<GLubyte>(78)};
+}
+
+ccColor3B panelAccent() {
+    return isMainMenuContext() ? ccColor3B{76, 178, 255} : ccColor3B{255, 48, 78};
+}
+
+ccColor4B panelGlow(float alpha) {
+    auto accent = panelAccent();
+    return {accent.r, accent.g, accent.b, static_cast<GLubyte>(alpha)};
 }
 
 } // namespace
@@ -418,7 +445,7 @@ void ComsPlusChatOverlay::buildBubble() {
 
     auto settings = readSettings();
     auto bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
-    auto bubbleSize = std::clamp(settings.bubbleSize, 34.0f, 72.0f);
+    auto bubbleSize = std::clamp(settings.bubbleSize, 26.0f, 72.0f);
     m_lastBubbleOpacity = bubbleOpacity;
     m_lastBubbleSize = bubbleSize;
     auto alpha = [bubbleOpacity](float value) {
@@ -430,30 +457,26 @@ void ComsPlusChatOverlay::buildBubble() {
     m_bubbleRoot->setContentSize({bubbleSize, bubbleSize});
     this->addChild(m_bubbleRoot, 4);
 
-    m_bubbleRoot->addChild(rect({190, 10, 28, alpha(92.0f)}, {bubbleSize + 8.0f, bubbleSize + 8.0f}, {-4.0f, -4.0f}));
-    m_bubbleRoot->addChild(rect({8, 9, 14, alpha(215.0f)}, {bubbleSize, bubbleSize}, {0.0f, 0.0f}));
-    addBorder(m_bubbleRoot, {bubbleSize, bubbleSize}, {255, 42, 62, alpha(235.0f)}, 2.0f);
+    auto accent = panelAccent();
+    auto center = CCPoint{bubbleSize * 0.5f, bubbleSize * 0.5f};
+    auto ringWidth = std::max(1.2f, bubbleSize * 0.035f);
+    m_bubbleRoot->addChild(disc({accent.r, accent.g, accent.b, alpha(42.0f)}, bubbleSize * 0.55f, center));
+    m_bubbleRoot->addChild(disc({5, 8, 17, alpha(252.0f)}, bubbleSize * 0.49f, center));
+    m_bubbleRoot->addChild(disc({accent.r, accent.g, accent.b, alpha(210.0f)}, bubbleSize * 0.49f, center));
+    m_bubbleRoot->addChild(disc({6, 10, 20, alpha(255.0f)}, bubbleSize * 0.49f - ringWidth, center));
+    m_bubbleRoot->addChild(disc({13, 23, 37, alpha(255.0f)}, bubbleSize * 0.37f, center));
 
-    if (auto icon = createBubbleIcon()) {
-        icon->setID("comsplus-bubble-icon"_spr);
-        icon->setAnchorPoint({0.5f, 0.5f});
-        icon->setPosition({bubbleSize * 0.5f, bubbleSize * 0.5f});
-        icon->setOpacity(alpha(255.0f));
-        auto size = icon->getContentSize();
-        auto maxSize = std::max(size.width, size.height);
-        if (maxSize > 0.0f) {
-            icon->setScale((bubbleSize - 5.0f) / maxSize);
-        }
-        m_bubbleRoot->addChild(icon);
-    } else {
-        auto dot = CCLabelBMFont::create("...", "bigFont.fnt");
-        dot->setAnchorPoint({0.5f, 0.5f});
-        dot->setScale(0.55f);
-        dot->setColor({255, 240, 242});
-        dot->setOpacity(alpha(255.0f));
-        dot->setPosition({bubbleSize * 0.5f, bubbleSize * 0.53f});
-        m_bubbleRoot->addChild(dot);
-    }
+    auto chat = CCLabelBMFont::create("C+", "bigFont.fnt");
+    chat->setID("comsplus-bubble-glyph"_spr);
+    chat->setAnchorPoint({0.5f, 0.5f});
+    chat->setScale(std::clamp(bubbleSize / 92.0f, 0.28f, 0.62f));
+    chat->setColor({218, 248, 255});
+    chat->setOpacity(alpha(255.0f));
+    chat->setPosition({bubbleSize * 0.5f, bubbleSize * 0.54f});
+    m_bubbleRoot->addChild(chat);
+
+    m_bubbleRoot->addChild(disc({126, 244, 255, alpha(210.0f)}, std::max(1.2f, bubbleSize * 0.045f), {bubbleSize * 0.32f, bubbleSize * 0.27f}));
+    m_bubbleRoot->addChild(disc({255, 74, 105, alpha(210.0f)}, std::max(1.2f, bubbleSize * 0.045f), {bubbleSize * 0.68f, bubbleSize * 0.27f}));
 }
 
 void ComsPlusChatOverlay::buildPanel() {
@@ -467,6 +490,9 @@ void ComsPlusChatOverlay::buildPanel() {
     auto size = panelSize();
     auto settings = readSettings();
     auto bgAlpha = static_cast<GLubyte>(std::clamp(settings.chatOpacity, 0.2f, 1.0f) * 228.0f);
+    auto accent = panelAccent();
+    auto headerHeight = isMobileLayout() ? 38.0f : 31.0f;
+    auto inputHeight = isMobileLayout() ? 34.0f : 28.0f;
     m_lastPanelWidth = size.width;
     m_lastPanelHeight = size.height;
     m_lastChatOpacity = settings.chatOpacity;
@@ -476,49 +502,58 @@ void ComsPlusChatOverlay::buildPanel() {
     m_panelRoot->setContentSize(size);
     this->addChild(m_panelRoot, 5);
 
-    m_panelRoot->addChild(rect({255, 24, 50, 26}, {size.width + 10.0f, size.height + 10.0f}, {-5.0f, -5.0f}));
-    m_panelRoot->addChild(rect({7, 7, 12, bgAlpha}, size, {0.0f, 0.0f}));
-    m_panelRoot->addChild(rect({24, 8, 14, 205}, {size.width, 28.0f}, {0.0f, size.height - 28.0f}));
-    m_panelRoot->addChild(rect({255, 46, 75, 58}, {size.width - 12.0f, 1.0f}, {6.0f, size.height - 30.0f}));
-    addBorder(m_panelRoot, size, {255, 48, 78, 188}, 1.2f);
+    m_panelRoot->addChild(rect({accent.r, accent.g, accent.b, 28}, {size.width + 10.0f, size.height + 10.0f}, {-5.0f, -5.0f}));
+    m_panelRoot->addChild(rect({6, 8, 15, bgAlpha}, size, {0.0f, 0.0f}));
+    m_panelRoot->addChild(rect(isMainMenuContext() ? ccColor4B{10, 25, 47, 220} : ccColor4B{28, 8, 16, 220}, {size.width, headerHeight}, {0.0f, size.height - headerHeight}));
+    m_panelRoot->addChild(rect({accent.r, accent.g, accent.b, 72}, {size.width - 12.0f, 1.0f}, {6.0f, size.height - headerHeight - 2.0f}));
+    addBorder(m_panelRoot, size, {accent.r, accent.g, accent.b, 190}, 1.2f);
     auto innerBorder = CCNode::create();
     innerBorder->setPosition({5.0f, 5.0f});
-    addBorder(innerBorder, {size.width - 10.0f, size.height - 10.0f}, {255, 68, 96, 78}, 1.0f);
+    addBorder(innerBorder, {size.width - 10.0f, size.height - 10.0f}, {accent.r, accent.g, accent.b, 82}, 1.0f);
     m_panelRoot->addChild(innerBorder);
 
     auto title = CCLabelBMFont::create("ComsPlus", "bigFont.fnt");
     title->setAnchorPoint({0.0f, 0.5f});
-    title->setScale(0.34f);
+    title->setScale(isMobileLayout() ? 0.44f : 0.37f);
     title->setColor({255, 230, 232});
-    title->setPosition({12.0f, size.height - 14.0f});
+    title->setPosition({12.0f, size.height - headerHeight * 0.5f});
     m_panelRoot->addChild(title);
+
+    if (isMobileLayout()) {
+        auto closeHint = CCLabelBMFont::create("x", "bigFont.fnt");
+        closeHint->setAnchorPoint({1.0f, 0.5f});
+        closeHint->setScale(0.24f);
+        closeHint->setColor({255, 168, 176});
+        closeHint->setPosition({size.width - 12.0f, size.height - headerHeight * 0.5f});
+        m_panelRoot->addChild(closeHint);
+    }
 
     m_status = CCLabelBMFont::create("ComsPlus", "chatFont.fnt");
     m_status->setID("comsplus-status"_spr);
     m_status->setAnchorPoint({1.0f, 0.5f});
-    m_status->setScale(0.31f);
-    m_status->setColor({255, 150, 160});
-    m_status->setPosition({size.width - 12.0f, size.height - 14.0f});
+    m_status->setScale(isMobileLayout() ? 0.38f : 0.33f);
+    m_status->setColor({185, 222, 255});
+    m_status->setPosition({size.width - (isMobileLayout() ? 28.0f : 12.0f), size.height - headerHeight * 0.5f});
     m_panelRoot->addChild(m_status);
 
     m_messageRoot = CCNode::create();
     m_messageRoot->setID("comsplus-messages"_spr);
-    m_messageRoot->setContentSize({size.width - 20.0f, size.height - 68.0f});
-    m_messageRoot->setPosition({10.0f, 36.0f});
+    m_messageRoot->setContentSize({size.width - 18.0f, size.height - headerHeight - inputHeight - 17.0f});
+    m_messageRoot->setPosition({9.0f, inputHeight + 11.0f});
     m_panelRoot->addChild(m_messageRoot);
 
-    m_panelRoot->addChild(rect({2, 3, 7, 146}, {size.width - 96.0f, 24.0f}, {10.0f, 8.0f}));
+    m_panelRoot->addChild(rect({2, 5, 13, 174}, {size.width - 102.0f, inputHeight}, {10.0f, 7.0f}));
     auto inputBorder = CCNode::create();
-    inputBorder->setPosition({10.0f, 8.0f});
-    addBorder(inputBorder, {size.width - 96.0f, 24.0f}, {255, 58, 86, 84}, 1.0f);
+    inputBorder->setPosition({10.0f, 7.0f});
+    addBorder(inputBorder, {size.width - 102.0f, inputHeight}, {accent.r, accent.g, accent.b, 92}, 1.0f);
     m_panelRoot->addChild(inputBorder);
 
-    m_input = TextInput::create(size.width - 104.0f, "Message", "chatFont.fnt");
+    m_input = TextInput::create(size.width - 110.0f, "Message", "chatFont.fnt");
     m_input->setID("comsplus-input"_spr);
-    m_input->setScale(0.62f);
+    m_input->setScale(isMobileLayout() ? 0.83f : 0.68f);
     m_input->setMaxCharCount(120);
     m_input->setCommonFilter(CommonFilter::Any);
-    m_input->setPosition({(size.width - 92.0f) * 0.5f, 20.0f});
+    m_input->setPosition({(size.width - 100.0f) * 0.5f, 7.0f + inputHeight * 0.5f});
     m_panelRoot->addChild(m_input);
 
     auto sendSprite = ButtonSprite::create("Send", "chatFont.fnt", "GJ_button_06.png", 0.54f);
@@ -526,7 +561,7 @@ void ComsPlusChatOverlay::buildPanel() {
     sendButton->setID("comsplus-send-button"_spr);
     auto menu = CCMenu::create();
     menu->setID("comsplus-send-menu"_spr);
-    menu->setPosition({size.width - 38.0f, 20.0f});
+    menu->setPosition({size.width - 42.0f, 7.0f + inputHeight * 0.5f});
     menu->addChild(sendButton);
     m_sendMenu = menu;
     m_panelRoot->addChild(menu);
@@ -576,9 +611,17 @@ void ComsPlusChatOverlay::updateLayout() {
 
 void ComsPlusChatOverlay::setExpanded(bool expanded) {
     m_expanded = expanded;
-    if (m_bubbleRoot) m_bubbleRoot->setVisible(isMobileLayout() && !expanded);
+    if (m_bubbleRoot) {
+        auto settings = readSettings();
+        auto hiddenInMenu = isMainMenuContext() && (settings.hideBubbleInMainMenu || !settings.mainMenuChatEnabled);
+        m_bubbleRoot->setVisible(isMobileLayout() && !expanded && !hiddenInMenu);
+    }
     if (m_panelRoot) m_panelRoot->setVisible(expanded);
     updateLayout();
+}
+
+void ComsPlusChatOverlay::refreshVisibility() {
+    setExpanded(m_expanded);
 }
 
 void ComsPlusChatOverlay::openPanel() {
@@ -654,7 +697,7 @@ bool ComsPlusChatOverlay::ccTouchBegan(CCTouch* touch, CCEvent*) {
         return true;
     }
 
-    if (m_expanded && !isMobileLayout() && pointInPanelHeader(point)) {
+    if (m_expanded && pointInPanelHeader(point)) {
         m_dragMode = DragMode::Panel;
         m_dragStart = m_panelPosition;
         return true;
@@ -663,7 +706,20 @@ bool ComsPlusChatOverlay::ccTouchBegan(CCTouch* touch, CCEvent*) {
     if (m_expanded && pointInPanel(point)) {
         if (pointInInput(point) && m_input) {
             m_input->focus();
+            m_dragMode = DragMode::None;
+            return true;
         }
+        if (auto accountId = accountIdAt(point)) {
+            m_dragMode = DragMode::Message;
+            m_pressedAccountId = *accountId;
+            return true;
+        }
+        m_dragMode = DragMode::None;
+        return true;
+    }
+
+    if (m_expanded && isMobileLayout()) {
+        collapse();
         m_dragMode = DragMode::None;
         return true;
     }
@@ -692,7 +748,12 @@ void ComsPlusChatOverlay::ccTouchMoved(CCTouch* touch, CCEvent*) {
 void ComsPlusChatOverlay::ccTouchEnded(CCTouch*, CCEvent*) {
     if (m_dragMode == DragMode::Bubble && !m_dragged) {
         openPanel();
+    } else if (m_dragMode == DragMode::Panel && isMobileLayout() && !m_dragged) {
+        collapse();
+    } else if (m_dragMode == DragMode::Message && !m_dragged && m_pressedAccountId > 0) {
+        openProfile(m_pressedAccountId);
     }
+    m_pressedAccountId = 0;
     m_dragMode = DragMode::None;
 }
 
@@ -702,7 +763,11 @@ void ComsPlusChatOverlay::tick(float dt) {
     if (m_elapsed < 0.25f) return;
     m_elapsed = 0.0f;
 
-    GlobedBridge::get().maintain();
+    if (isMainMenuContext()) {
+        GlobalChatBridge::get().maintain();
+    } else {
+        GlobedBridge::get().maintain();
+    }
     pruneExpiredBans();
 
     auto settings = readSettings();
@@ -721,13 +786,14 @@ void ComsPlusChatOverlay::tick(float dt) {
     }
 
     if (m_status) {
-        m_status->setString(GlobedBridge::get().statusText().c_str());
+        auto status = isMainMenuContext() ? GlobalChatBridge::get().statusText() : GlobedBridge::get().statusText();
+        m_status->setString(status.c_str());
     }
 
     updateLayout();
 
     if (isMobileLayout() && m_bubbleRoot) {
-        auto bubbleSize = std::clamp(settings.bubbleSize, 34.0f, 72.0f);
+        auto bubbleSize = std::clamp(settings.bubbleSize, 26.0f, 72.0f);
         auto bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
         if (std::abs(bubbleSize - m_lastBubbleSize) > 0.5f || std::abs(bubbleOpacity - m_lastBubbleOpacity) > 0.01f) {
             buildBubble();
@@ -735,11 +801,14 @@ void ComsPlusChatOverlay::tick(float dt) {
         }
     }
 
-    announceJoinIfNeeded();
+    if (!isMainMenuContext()) {
+        announceJoinIfNeeded();
+    }
 
-    auto received = GlobedBridge::get().pollReceived();
+    auto received = isMainMenuContext() ? GlobalChatBridge::get().pollReceived() : GlobedBridge::get().pollReceived();
     auto receivedAny = false;
     for (auto& message : received) {
+        if (hasMessageId(message.messageId)) continue;
         if (!shouldDisplayMessage(message)) continue;
         if (message.kind == ChatMessageKind::Moderation) {
             if (!applyModeration(message)) continue;
@@ -782,16 +851,19 @@ void ComsPlusChatOverlay::onSend(CCObject*) {
     }
 
     auto message = makeLocalMessage(text);
-    auto result = GlobedBridge::get().sendChat(message);
+    auto result = isMainMenuContext() ? GlobalChatBridge::get().sendChat(message) : GlobedBridge::get().sendChat(message);
     if (result == ChatSendResult::Failed) {
-        if (m_status) m_status->setString(GlobedBridge::get().statusText().c_str());
+        if (m_status) {
+            auto status = isMainMenuContext() ? GlobalChatBridge::get().statusText() : GlobedBridge::get().statusText();
+            m_status->setString(status.c_str());
+        }
         return;
     }
 
     if (m_rateLimiter) m_rateLimiter->markSent(current);
     m_input->setString("", false);
     if (result == ChatSendResult::Queued && m_status) {
-        m_status->setString("Queued for Globed");
+        m_status->setString(isMainMenuContext() ? "Queued for main chat" : "Queued for Globed");
     }
     appendMessage(std::move(message), true);
 }
@@ -935,9 +1007,12 @@ bool ComsPlusChatOverlay::handleCommand(std::string const& text) {
         expiresAt
     );
 
-    auto result = GlobedBridge::get().sendChat(message);
+    auto result = isMainMenuContext() ? GlobalChatBridge::get().sendChat(message) : GlobedBridge::get().sendChat(message);
     if (result == ChatSendResult::Failed) {
-        if (m_status) m_status->setString(GlobedBridge::get().statusText().c_str());
+        if (m_status) {
+            auto status = isMainMenuContext() ? GlobalChatBridge::get().statusText() : GlobedBridge::get().statusText();
+            m_status->setString(status.c_str());
+        }
         return false;
     }
 
@@ -1062,6 +1137,13 @@ bool ComsPlusChatOverlay::hasRainbowMessages() const {
     });
 }
 
+bool ComsPlusChatOverlay::hasMessageId(std::string const& messageId) const {
+    if (messageId.empty()) return false;
+    return std::any_of(m_messages.begin(), m_messages.end(), [&](RenderedMessage const& rendered) {
+        return rendered.message.messageId == messageId;
+    });
+}
+
 CCNode* ComsPlusChatOverlay::createIconNode(std::string const& iconData) const {
     auto cube = parseIconPart(iconData, "cube", 1);
     auto color1 = parseIconPart(iconData, "c1", 0);
@@ -1071,18 +1153,19 @@ CCNode* ComsPlusChatOverlay::createIconNode(std::string const& iconData) const {
     if (icon) {
         icon->setColor(colorFor(color1));
         icon->setSecondColor(colorFor(color2));
-        icon->setScale(0.22f);
+        icon->setScale(isMobileLayout() ? 0.36f : 0.28f);
         return icon;
     }
 
     auto fallback = CCLabelBMFont::create("[]", "chatFont.fnt");
-    fallback->setScale(0.4f);
+    fallback->setScale(isMobileLayout() ? 0.58f : 0.46f);
     return fallback;
 }
 
 void ComsPlusChatOverlay::rebuild() {
     if (!m_messageRoot) return;
     m_messageRoot->removeAllChildrenWithCleanup(true);
+    m_messageHits.clear();
 
     auto rootSize = m_messageRoot->getContentSize();
     float y = 3.0f;
@@ -1091,8 +1174,9 @@ void ComsPlusChatOverlay::rebuild() {
 
     for (auto it = m_messages.rbegin(); it != m_messages.rend(); ++it, ++index) {
         auto const& rendered = *it;
+        if (!shouldDisplayMessage(rendered.message)) continue;
         if (rendered.message.kind == ChatMessageKind::System || rendered.message.kind == ChatMessageKind::Moderation) {
-            constexpr float rowHeight = 10.0f;
+            auto rowHeight = isMobileLayout() ? 15.0f : 12.0f;
             if (y + rowHeight > rootSize.height) break;
 
             auto isModeration = rendered.message.kind == ChatMessageKind::Moderation;
@@ -1108,17 +1192,18 @@ void ComsPlusChatOverlay::rebuild() {
 
             auto label = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
             label->setAnchorPoint({0.0f, 0.5f});
-            label->setScale(0.235f);
+            auto systemScale = isMobileLayout() ? 0.32f : 0.26f;
+            label->setScale(systemScale);
             label->setColor(isModeration ? ccColor3B{155, 224, 255} : ccColor3B{198, 153, 163});
             label->setPosition({6.0f, y + rowHeight * 0.5f});
-            label->limitLabelWidth(rootSize.width - 12.0f, 0.235f, 0.06f);
+            label->limitLabelWidth(rootSize.width - 12.0f, systemScale, 0.06f);
             m_messageRoot->addChild(label);
 
             y += rowHeight + 2.0f;
             continue;
         }
 
-        constexpr float rowHeight = 24.0f;
+        auto rowHeight = isMobileLayout() ? 38.0f : 32.0f;
         if (y + rowHeight > rootSize.height) break;
 
         auto rowPhase = phase + static_cast<float>(index) * 0.45f;
@@ -1129,44 +1214,72 @@ void ComsPlusChatOverlay::rebuild() {
 
         auto icon = createIconNode(rendered.message.iconData);
         icon->setAnchorPoint({0.5f, 0.5f});
-        icon->setPosition({13.0f, y + 16.0f});
+        auto iconCenterX = isMobileLayout() ? 21.0f : 16.0f;
+        auto iconCenterY = y + rowHeight - (isMobileLayout() ? 13.0f : 11.0f);
+        icon->setPosition({iconCenterX, iconCenterY});
         m_messageRoot->addChild(icon);
 
         auto name = CCLabelBMFont::create(rendered.message.displayName.c_str(), "chatFont.fnt");
         name->setAnchorPoint({0.0f, 0.5f});
-        name->setScale(0.27f);
+        auto nameScale = isMobileLayout() ? 0.40f : 0.34f;
+        auto textScale = isMobileLayout() ? 0.34f : 0.30f;
+        auto textX = isMobileLayout() ? 46.0f : 35.0f;
+        name->setScale(nameScale);
         name->setColor(accent);
-        name->setPosition({29.0f, y + 16.5f});
-        name->limitLabelWidth(rootSize.width - 38.0f, 0.27f, 0.07f);
+        name->setPosition({textX, y + rowHeight - (isMobileLayout() ? 10.5f : 10.0f)});
+        name->limitLabelWidth(rootSize.width - textX - 54.0f, nameScale, 0.08f);
         m_messageRoot->addChild(name);
 
         if (hasDevBadge(rendered.message)) {
-            auto nameWidth = std::min(name->getScaledContentWidth(), rootSize.width - 82.0f);
-            auto badgeX = 32.0f + nameWidth;
-            auto badgeY = y + 12.5f;
-            m_messageRoot->addChild(rect({77, 190, 255, 68}, {21.0f, 8.0f}, {badgeX, badgeY}));
-            auto badgeBorder = CCNode::create();
-            badgeBorder->setPosition({badgeX, badgeY});
-            addBorder(badgeBorder, {21.0f, 8.0f}, {130, 225, 255, 128}, 0.7f);
-            m_messageRoot->addChild(badgeBorder);
+            auto nameWidth = std::min(name->getScaledContentWidth(), rootSize.width - textX - 64.0f);
+            auto badgeX = textX + nameWidth + 6.0f;
+            auto badgeY = y + rowHeight - (isMobileLayout() ? 10.3f : 9.8f);
 
             auto badge = CCLabelBMFont::create("Dev", "chatFont.fnt");
-            badge->setAnchorPoint({0.5f, 0.5f});
-            badge->setScale(0.17f);
-            badge->setColor({180, 238, 255});
-            badge->setPosition({badgeX + 10.5f, badgeY + 4.0f});
+            badge->setAnchorPoint({0.0f, 0.5f});
+            badge->setScale(isMobileLayout() ? 0.26f : 0.22f);
+            badge->setColor({135, 226, 255});
+            badge->setPosition({badgeX, badgeY});
+            badge->limitLabelWidth(28.0f, isMobileLayout() ? 0.26f : 0.22f, 0.08f);
             m_messageRoot->addChild(badge);
         }
 
         auto text = CCLabelBMFont::create(rendered.message.text.c_str(), "chatFont.fnt");
         text->setAnchorPoint({0.0f, 0.5f});
-        text->setScale(0.245f);
+        text->setScale(textScale);
         text->setColor(messageBodyColor(rendered.message, rendered.local, rowPhase));
-        text->setPosition({29.0f, y + 6.0f});
-        text->limitLabelWidth(rootSize.width - 38.0f, 0.245f, 0.055f);
+        text->setPosition({textX, y + (isMobileLayout() ? 9.5f : 8.8f)});
+        text->limitLabelWidth(rootSize.width - textX - 10.0f, textScale, 0.055f);
         m_messageRoot->addChild(text);
 
+        if (rendered.message.accountId > 0) {
+            m_messageHits.push_back({CCRectMake(0.0f, y, rootSize.width, rowHeight), rendered.message.accountId});
+        }
+
         y += rowHeight + 3.0f;
+    }
+}
+
+std::optional<std::int64_t> ComsPlusChatOverlay::accountIdAt(CCPoint const& point) const {
+    if (!m_messageRoot) return std::nullopt;
+    auto local = m_messageRoot->convertToNodeSpace(point);
+    for (auto const& hit : m_messageHits) {
+        if (
+            local.x >= hit.rect.origin.x &&
+            local.x <= hit.rect.origin.x + hit.rect.size.width &&
+            local.y >= hit.rect.origin.y &&
+            local.y <= hit.rect.origin.y + hit.rect.size.height
+        ) {
+            return hit.accountId;
+        }
+    }
+    return std::nullopt;
+}
+
+void ComsPlusChatOverlay::openProfile(std::int64_t accountId) {
+    if (accountId <= 0) return;
+    if (auto page = ProfilePage::create(static_cast<int>(accountId), accountId == localAccountId())) {
+        page->show();
     }
 }
 
@@ -1192,10 +1305,11 @@ bool ComsPlusChatOverlay::pointInPanel(CCPoint const& point) const {
 bool ComsPlusChatOverlay::pointInPanelHeader(CCPoint const& point) const {
     if (!m_panelRoot) return false;
     auto size = m_panelRoot->getContentSize();
+    auto headerHeight = isMobileLayout() ? 36.0f : 30.0f;
     return pointInRect(
         point,
-        {m_panelPosition.x, m_panelPosition.y + size.height - 32.0f},
-        {size.width, 32.0f}
+        {m_panelPosition.x, m_panelPosition.y + size.height - headerHeight},
+        {size.width, headerHeight}
     );
 }
 

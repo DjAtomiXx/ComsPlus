@@ -6,12 +6,12 @@
   },
   "id": "exploited.comsplus",
   "name": "ComsPlus",
-  "version": "1.0.10",
+  "version": "1.0.0",
   "developer": "Exploited",
-  "description": "Local privacy display names and Globed-backed ComsPlus chat.",
+  "description": "Local privacy display names with level and main menu ComsPlus chat.",
   "dependencies": {
     "dankmeme.globed2": {
-      "version": ">=2.2.0",
+      "version": ">=2.1.4",
       "required": false
     }
   },
@@ -58,7 +58,7 @@
       "type": "float",
       "name": "Bubble size",
       "default": 46,
-      "min": 34,
+      "min": 26,
       "max": 72,
       "control": {
         "slider": true,
@@ -70,7 +70,19 @@
       "type": "bool",
       "name": "Hide bubble in main menu",
       "description": "Keeps the floating ComsPlus bubble out of the main menu.",
+      "default": false
+    },
+    "main-menu-chat-enabled": {
+      "type": "bool",
+      "name": "Main menu global chat",
+      "description": "Uses the configured ComsPlus server for global chat outside levels.",
       "default": true
+    },
+    "main-chat-server-url": {
+      "type": "string",
+      "name": "Main chat server",
+      "description": "HTTP endpoint for the ComsPlus main menu chat server.",
+      "default": "https://hexasystems.xyz/comsplus"
     },
     "open-chat-keybind": {
       "type": "keybind",
@@ -120,9 +132,9 @@
     "desktop-panel-width": {
       "type": "float",
       "name": "Desktop chat width",
-      "default": 336,
-      "min": 280,
-      "max": 520,
+      "default": 460,
+      "min": 320,
+      "max": 580,
       "control": {
         "slider": true,
         "slider-step": 8,
@@ -132,9 +144,9 @@
     "desktop-panel-height": {
       "type": "float",
       "name": "Desktop chat height",
-      "default": 188,
-      "min": 150,
-      "max": 300,
+      "default": 280,
+      "min": 190,
+      "max": 340,
       "control": {
         "slider": true,
         "slider-step": 6,
@@ -157,9 +169,9 @@
     "max-chat-messages": {
       "type": "int",
       "name": "Message history",
-      "default": 8,
-      "min": 3,
-      "max": 20,
+      "default": 14,
+      "min": 4,
+      "max": 32,
       "control": {
         "slider": true,
         "slider-step": 1,

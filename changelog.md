@@ -1,6 +1,23 @@
 # ComsPlus Changelog
 
-## 1.0.10
+## 1.0 Stable
+
+Stable release.
+
+- Added main menu chat support.
+- Improved chat visuals and mobile readability.
+- Improved bubble and profile interactions.
+- Fixed various bugs.
+
+## 1.0.11 Beta
+
+Mobile compatibility update.
+
+- Improved mobile chat controls.
+- Improved Globed chat compatibility.
+- Fixed various bugs.
+
+## 1.0.10 Beta
 
 Stability update.
 
@@ -8,7 +25,7 @@ Stability update.
 - Improved settings behavior.
 - Fixed various bugs.
 
-## 1.0.9
+## 1.0.9 Beta
 
 Small Android polish update.
 
@@ -16,7 +33,7 @@ Small Android polish update.
 - Improved local fake-name updates.
 - Fixed various bugs.
 
-## 1.0.8
+## 1.0.8 Beta
 
 Stability update.
 
@@ -24,7 +41,7 @@ Stability update.
 - Improved privacy name refresh behavior.
 - Fixed various bugs.
 
-## 1.0.7
+## 1.0.7 Beta
 
 Compatibility update.
 
@@ -32,7 +49,7 @@ Compatibility update.
 - Improved desktop and mobile setting handling.
 - Fixed various bugs.
 
-## 1.0.6
+## 1.0.6 Beta
 
 Chat compatibility update.
 
@@ -40,7 +57,7 @@ Chat compatibility update.
 - Improved behavior when optional chat features are unavailable.
 - Fixed various bugs.
 
-## 1.0.5
+## 1.0.5 Beta
 
 Mobile stability update.
 
@@ -48,26 +65,26 @@ Mobile stability update.
 - Improved pause-menu chat behavior.
 - Fixed various bugs.
 
-## 1.0.4
+## 1.0.4 Beta
 
 Chat moderation and polish update.
 
-- Added Dev badge support.
-- Added basic chat moderation commands.
+- Improved chat labels.
+- Improved moderation behavior.
 - Improved chat overlay behavior.
 
-## 1.0.3
+## 1.0.3 Beta
 
 Chat style update.
 
 - Improved message layout.
-- Added custom and rainbow name colors.
+- Improved message color options.
 - Improved level chat filtering.
 
-## 1.0.2
+## 1.0.2 Beta
 
 Initial ComsPlus update.
 
-- Added local fake-name display.
-- Added ComsPlus chat overlay.
-- Added desktop shortcut and mobile bubble support.
+- Added local privacy display.
+- Added early chat overlay support.
+- Added desktop and mobile controls.
