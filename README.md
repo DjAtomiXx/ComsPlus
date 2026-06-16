@@ -45,6 +45,6 @@ Android Geode Launcher path:
 
 The in-level network chat uses Globed 2.1.4+ server events through the bundled MIT-licensed Soft Link API headers. Globed is still optional at runtime; if it is missing, outdated, offline, or not active in a level, ComsPlus keeps running and the overlay shows the exact status.
 
-The main menu chat uses the relay in `server/`. New installs use `https://hexasystems.xyz/comsplus` by default; deploy the Cloudflare Worker in `server/cloudflare/` on that route or run the Node relay behind a reverse proxy at the same path.
+The main menu chat uses the relay in `server/` and always connects to `https://hexasystems.xyz/comsplus` in this release. Custom relay URLs are intentionally reserved for a later update.
 
 Android opens the chat through the draggable bubble. Windows opens it through the Open chat keybind in Geode's keybind menu; the default is C.

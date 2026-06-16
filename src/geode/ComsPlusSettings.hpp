@@ -24,7 +24,6 @@ struct ComsPlusSettings {
     float bubbleSize = 46.0f;
     bool hideBubbleInMainMenu = false;
     bool mainMenuChatEnabled = true;
-    std::string mainChatServerUrl = "https://hexasystems.xyz/comsplus";
     int sendCooldownMs = 1500;
     int maxChatMessages = 14;
 };

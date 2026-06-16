@@ -64,7 +64,6 @@ ComsPlusSettings readSettings() {
     settings.bubbleSize = static_cast<float>(settingOr<double>("bubble-size", settings.bubbleSize));
     settings.hideBubbleInMainMenu = settingOr<bool>("hide-bubble-main-menu", settings.hideBubbleInMainMenu);
     settings.mainMenuChatEnabled = settingOr<bool>("main-menu-chat-enabled", settings.mainMenuChatEnabled);
-    settings.mainChatServerUrl = settingOr<std::string>("main-chat-server-url", settings.mainChatServerUrl);
     settings.sendCooldownMs = static_cast<int>(settingOr<int64_t>("send-cooldown-ms", settings.sendCooldownMs));
     settings.maxChatMessages = static_cast<int>(settingOr<int64_t>("max-chat-messages", settings.maxChatMessages));
     settings.chatOpacity = std::clamp(settings.chatOpacity, 0.2f, 1.0f);

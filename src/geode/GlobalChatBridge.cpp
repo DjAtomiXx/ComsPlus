@@ -24,11 +24,8 @@ std::int64_t nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
 }
 
-std::string normalizedServerUrl(std::string url) {
-    while (!url.empty() && url.back() == '/') {
-        url.pop_back();
-    }
-    return url.empty() ? kDefaultServerUrl : url;
+std::string relayServerUrl() {
+    return kDefaultServerUrl;
 }
 
 std::string endpoint(std::string const& serverUrl, std::string const& pathAndQuery) {
@@ -78,7 +75,7 @@ void GlobalChatBridge::maintain() {
         return;
     }
 
-    auto serverUrl = normalizedServerUrl(settings.mainChatServerUrl);
+    auto serverUrl = relayServerUrl();
     if (serverUrl.empty()) {
         std::lock_guard lock(m_mutex);
         m_status = "Main chat connecting";
@@ -105,7 +102,7 @@ std::string GlobalChatBridge::statusText() const {
 
 ChatSendResult GlobalChatBridge::sendChat(ChatMessage const& message) {
     auto settings = readSettings();
-    auto serverUrl = normalizedServerUrl(settings.mainChatServerUrl);
+    auto serverUrl = relayServerUrl();
     if (!settings.mainMenuChatEnabled || serverUrl.empty()) {
         std::lock_guard lock(m_mutex);
         m_status = "Main chat connecting";

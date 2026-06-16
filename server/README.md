@@ -29,7 +29,7 @@ pm2 start comsplus-server.js --name comsplus --update-env
 pm2 save
 ```
 
-Set the public endpoint in the mod setting `Main chat server`:
+This release always connects to:
 
 ```text
 https://hexasystems.xyz/comsplus

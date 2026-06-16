@@ -75,14 +75,8 @@
     "main-menu-chat-enabled": {
       "type": "bool",
       "name": "Main menu global chat",
-      "description": "Uses the configured ComsPlus server for global chat outside levels.",
+      "description": "Uses the official ComsPlus relay for global chat outside levels.",
       "default": true
-    },
-    "main-chat-server-url": {
-      "type": "string",
-      "name": "Main chat server",
-      "description": "HTTP endpoint for the ComsPlus main menu chat server.",
-      "default": "https://hexasystems.xyz/comsplus"
     },
     "open-chat-keybind": {
       "type": "keybind",
