@@ -124,6 +124,9 @@ private:
     void setExpanded(bool expanded);
     void openPanel();
     void appendMessage(ChatMessage message, bool local);
+    void restorePersistentMainChat();
+    void persistMainChatMessage(ChatMessage const& message, bool local, bool visible);
+    void clearPersistentMainChat();
     void announceJoinIfNeeded();
     ChatMessage makeSystemMessage(std::string text) const;
     ChatMessage makeLocalMessage(std::string text) const;

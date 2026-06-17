@@ -6,7 +6,7 @@
   },
   "id": "exploited.comsplus",
   "name": "ComsPlus",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "developer": "Exploited",
   "description": "Local privacy display names with level and main menu ComsPlus chat.",
   "dependencies": {

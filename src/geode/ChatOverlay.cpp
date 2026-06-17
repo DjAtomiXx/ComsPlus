@@ -27,6 +27,14 @@ constexpr int kOverlayTouchPriority = -650;
 constexpr std::int64_t kDefaultTempBanMs = 60 * 60 * 1000;
 ComsPlusChatOverlay* g_activeOverlay = nullptr;
 
+struct StoredRenderedMessage {
+    ChatMessage message;
+    bool local = false;
+};
+
+std::deque<StoredRenderedMessage> g_mainMessages;
+std::deque<StoredRenderedMessage> g_mainHistory;
+
 std::int64_t nowMs() {
     auto now = std::chrono::system_clock::now().time_since_epoch();
     return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
@@ -389,6 +397,23 @@ ccColor4B panelGlow(float alpha) {
     return {accent.r, accent.g, accent.b, static_cast<GLubyte>(alpha)};
 }
 
+float statusLabelMaxWidth(CCSize const& size) {
+    auto wanted = size.width * (isMobileLayout() ? 0.18f : 0.17f);
+    return std::clamp(wanted, isMobileLayout() ? 74.0f : 84.0f, isMobileLayout() ? 104.0f : 112.0f);
+}
+
+float statusLabelReservedWidth(CCSize const& size) {
+    auto closeSpace = isMobileLayout() ? 30.0f : 10.0f;
+    return statusLabelMaxWidth(size) + closeSpace + 12.0f;
+}
+
+void fitStatusLabel(CCLabelBMFont* label, CCSize const& size) {
+    if (!label) return;
+    auto scale = isMobileLayout() ? 0.35f : 0.30f;
+    label->setScale(scale);
+    label->limitLabelWidth(statusLabelMaxWidth(size), scale, 0.06f);
+}
+
 } // namespace
 
 ComsPlusChatOverlay* ComsPlusChatOverlay::create() {
@@ -417,6 +442,7 @@ bool ComsPlusChatOverlay::init() {
 
     m_bubblePosition = clampedBubblePosition(defaultBubblePosition());
     m_panelPosition = clampedPanelPosition(defaultPanelPosition());
+    restorePersistentMainChat();
 
     if (isMobileLayout()) {
         buildBubble();
@@ -563,10 +589,11 @@ void ComsPlusChatOverlay::buildPanel() {
         }
 
         auto x = isMobileLayout() ? 108.0f : 102.0f;
+        auto tabRightLimit = size.width - statusLabelReservedWidth(size);
         auto tabHeight = isMobileLayout() ? 18.0f : 15.0f;
         auto tabY = size.height - headerHeight * 0.5f - tabHeight * 0.5f;
         for (auto const& tab : specs) {
-            if (x + tab.width > size.width - (isMobileLayout() ? 34.0f : 86.0f)) break;
+            if (x + tab.width > tabRightLimit) break;
             auto active = m_viewMode == tab.mode;
             m_panelRoot->addChild(rect(
                 active ? ccColor4B{accent.r, accent.g, accent.b, 74} : ccColor4B{4, 10, 20, 92},
@@ -597,9 +624,9 @@ void ComsPlusChatOverlay::buildPanel() {
     m_status = CCLabelBMFont::create("ComsPlus", "chatFont.fnt");
     m_status->setID("comsplus-status"_spr);
     m_status->setAnchorPoint({1.0f, 0.5f});
-    m_status->setScale(isMobileLayout() ? 0.38f : 0.33f);
     m_status->setColor({185, 222, 255});
     m_status->setPosition({size.width - (isMobileLayout() ? 28.0f : 12.0f), size.height - headerHeight * 0.5f});
+    fitStatusLabel(m_status, size);
     m_panelRoot->addChild(m_status);
 
     m_messageRoot = CCNode::create();
@@ -910,6 +937,7 @@ void ComsPlusChatOverlay::tick(float dt) {
     if (m_status) {
         auto status = isMainMenuContext() ? GlobalChatBridge::get().statusText() : GlobedBridge::get().statusText();
         m_status->setString(status.c_str());
+        fitStatusLabel(m_status, panelSize());
     }
 
     updateLayout();
@@ -1013,7 +1041,10 @@ void ComsPlusChatOverlay::appendMessage(ChatMessage message, bool local) {
         m_history.pop_front();
     }
 
-    if (isMessageBanned(message) || isMessageMuted(message) || isMessageBlocked(message)) {
+    auto visible = !isMessageBanned(message) && !isMessageMuted(message) && !isMessageBlocked(message);
+    persistMainChatMessage(message, local, visible);
+
+    if (!visible) {
         rebuild();
         return;
     }
@@ -1023,6 +1054,43 @@ void ComsPlusChatOverlay::appendMessage(ChatMessage message, bool local) {
         m_messages.pop_front();
     }
     rebuild();
+}
+
+void ComsPlusChatOverlay::restorePersistentMainChat() {
+    if (!isMainMenuContext()) return;
+
+    m_history.clear();
+    m_messages.clear();
+
+    for (auto const& stored : g_mainHistory) {
+        m_history.push_back({stored.message, stored.local});
+    }
+    for (auto const& stored : g_mainMessages) {
+        m_messages.push_back({stored.message, stored.local});
+    }
+}
+
+void ComsPlusChatOverlay::persistMainChatMessage(ChatMessage const& message, bool local, bool visible) {
+    if (!isMainMenuContext()) return;
+
+    auto settings = readSettings();
+    g_mainHistory.push_back({message, local});
+    while (g_mainHistory.size() > 220) {
+        g_mainHistory.pop_front();
+    }
+
+    if (!visible) return;
+
+    g_mainMessages.push_back({message, local});
+    while (static_cast<int>(g_mainMessages.size()) > settings.maxChatMessages) {
+        g_mainMessages.pop_front();
+    }
+}
+
+void ComsPlusChatOverlay::clearPersistentMainChat() {
+    if (!isMainMenuContext()) return;
+    g_mainMessages.clear();
+    g_mainHistory.clear();
 }
 
 void ComsPlusChatOverlay::announceJoinIfNeeded() {
@@ -1305,7 +1373,9 @@ bool ComsPlusChatOverlay::applyModeration(ChatMessage const& message) {
     }
     if (message.moderationAction == ChatModerationAction::Clear) {
         m_messages.clear();
+        m_history.clear();
         m_messageHits.clear();
+        clearPersistentMainChat();
         return true;
     }
     if (message.moderationAction == ChatModerationAction::Unmute) {

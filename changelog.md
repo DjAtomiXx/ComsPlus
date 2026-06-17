@@ -1,5 +1,13 @@
 # ComsPlus Changelog
 
+## 1.0.4
+
+Small polish update.
+
+- Improved main chat behavior.
+- Improved chat header layout.
+- Fixed various bugs.
+
 ## 1.0.3
 
 Compatibility update.
