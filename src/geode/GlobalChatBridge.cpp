@@ -17,6 +17,8 @@ namespace comsplus {
 namespace {
 
 constexpr std::size_t kMaxGlobalMessages = 60;
+constexpr std::size_t kMaxPresenceRows = 80;
+constexpr std::size_t kMaxActivityRows = 60;
 constexpr auto kDefaultServerUrl = "https://hexasystems.xyz/comsplus";
 
 std::int64_t nowMs() {
@@ -30,6 +32,44 @@ std::string relayServerUrl() {
 
 std::string endpoint(std::string const& serverUrl, std::string const& pathAndQuery) {
     return serverUrl + pathAndQuery;
+}
+
+std::string percentEncode(std::string const& value) {
+    constexpr char hex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (
+            (ch >= 'a' && ch <= 'z') ||
+            (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') ||
+            ch == '-' || ch == '_' || ch == '.' || ch == '~'
+        ) {
+            out.push_back(static_cast<char>(ch));
+        } else {
+            out.push_back('%');
+            out.push_back(hex[ch >> 4]);
+            out.push_back(hex[ch & 0x0f]);
+        }
+    }
+    return out;
+}
+
+std::string localDisplayName() {
+    auto settings = readSettings();
+    DisplayNameSettings displaySettings{
+        settings.privacyEnabled,
+        settings.fakeName,
+        settings.chatNameMode
+    };
+    return selectDisplayName(localRealName(), displaySettings);
+}
+
+std::string heartbeatQuery(std::int64_t since) {
+    return "/poll?room=main&since=" + std::to_string(since) +
+        "&aid=" + std::to_string(localAccountId()) +
+        "&name=" + percentEncode(localDisplayName()) +
+        "&icon=" + percentEncode(localIconData());
 }
 
 bool isLocalServerUrl(std::string const& url) {
@@ -60,6 +100,53 @@ std::vector<std::string> linesOf(std::string const& text) {
     return lines;
 }
 
+std::vector<std::string> splitTabs(std::string const& text) {
+    std::vector<std::string> parts;
+    std::string current;
+    std::istringstream stream(text);
+    while (std::getline(stream, current, '\t')) {
+        parts.push_back(current);
+    }
+    return parts;
+}
+
+std::vector<ChatPresence> parsePresence(std::string const& body) {
+    std::vector<ChatPresence> out;
+    auto lines = linesOf(body);
+    for (std::size_t i = 1; i < lines.size() && out.size() < kMaxPresenceRows; ++i) {
+        auto parts = splitTabs(lines[i]);
+        if (parts.size() < 6) continue;
+        ChatPresence row;
+        row.accountId = numFromString<std::int64_t>(parts[0]).unwrapOr(0);
+        row.displayName = sanitizeName(parts[1]);
+        row.iconData = parts[2].substr(0, 64);
+        row.joinedAt = numFromString<std::int64_t>(parts[3]).unwrapOr(0);
+        row.lastSeen = numFromString<std::int64_t>(parts[4]).unwrapOr(0);
+        row.messageCount = numFromString<int>(parts[5]).unwrapOr(0);
+        row.usesComsPlus = true;
+        if (!row.displayName.empty()) {
+            out.push_back(std::move(row));
+        }
+    }
+    return out;
+}
+
+std::vector<ChatActivity> parseActivity(std::string const& body) {
+    std::vector<ChatActivity> out;
+    auto lines = linesOf(body);
+    for (std::size_t i = 1; i < lines.size() && out.size() < kMaxActivityRows; ++i) {
+        auto parts = splitTabs(lines[i]);
+        if (parts.size() < 2) continue;
+        ChatActivity row;
+        row.timestamp = numFromString<std::int64_t>(parts[0]).unwrapOr(0);
+        row.text = sanitizeMessage(parts[1]);
+        if (!row.text.empty()) {
+            out.push_back(std::move(row));
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 GlobalChatBridge& GlobalChatBridge::get() {
@@ -84,15 +171,27 @@ void GlobalChatBridge::maintain() {
 
     auto current = nowMs();
     auto since = std::int64_t{0};
+    auto loadMeta = false;
     {
         std::lock_guard lock(m_mutex);
-        if (m_polling || current - m_lastPollMs < 1250) return;
-        m_polling = true;
-        m_lastPollMs = current;
-        since = m_lastSeen;
+        if (!m_polling && current - m_lastPollMs >= 1250) {
+            m_polling = true;
+            m_lastPollMs = current;
+            since = m_lastSeen;
+        }
+        if (!m_metaLoading && current - m_lastMetaMs >= 5000) {
+            m_metaLoading = true;
+            m_lastMetaMs = current;
+            loadMeta = true;
+        }
     }
 
-    startPoll(std::move(serverUrl), since);
+    if (since != 0 || current - m_lastPollMs < 20) {
+        startPoll(serverUrl, since);
+    }
+    if (loadMeta) {
+        startMeta(std::move(serverUrl));
+    }
 }
 
 std::string GlobalChatBridge::statusText() const {
@@ -125,6 +224,16 @@ std::vector<ChatMessage> GlobalChatBridge::pollReceived() {
     return out;
 }
 
+std::vector<ChatPresence> GlobalChatBridge::presenceSnapshot() const {
+    std::lock_guard lock(m_mutex);
+    return m_presence;
+}
+
+std::vector<ChatActivity> GlobalChatBridge::activitySnapshot() const {
+    std::lock_guard lock(m_mutex);
+    return m_activity;
+}
+
 void GlobalChatBridge::startPoll(std::string serverUrl, std::int64_t since) {
     std::thread([this, serverUrl = std::move(serverUrl), since] {
         auto status = isLocalServerUrl(serverUrl) ? std::string("Set public server") : std::string("Main chat offline");
@@ -134,7 +243,7 @@ void GlobalChatBridge::startPoll(std::string serverUrl, std::int64_t since) {
         auto response = web::WebRequest()
             .timeout(std::chrono::seconds(4))
             .userAgent("ComsPlus/1.0")
-            .getSync(endpoint(serverUrl, "/poll?room=main&since=" + std::to_string(since)));
+            .getSync(endpoint(serverUrl, heartbeatQuery(since)));
 
         if (response.ok()) {
             auto body = response.string();
@@ -166,6 +275,42 @@ void GlobalChatBridge::startPoll(std::string serverUrl, std::int64_t since) {
         }
         m_status = std::move(status);
         m_polling = false;
+    }).detach();
+}
+
+void GlobalChatBridge::startMeta(std::string serverUrl) {
+    std::thread([this, serverUrl = std::move(serverUrl)] {
+        auto presence = std::vector<ChatPresence>{};
+        auto activity = std::vector<ChatActivity>{};
+
+        auto presenceResponse = web::WebRequest()
+            .timeout(std::chrono::seconds(4))
+            .userAgent("ComsPlus/1.0")
+            .getSync(endpoint(serverUrl, "/presence?room=main"));
+        if (presenceResponse.ok()) {
+            if (auto body = presenceResponse.string()) {
+                presence = parsePresence(body.unwrap());
+            }
+        }
+
+        auto activityResponse = web::WebRequest()
+            .timeout(std::chrono::seconds(4))
+            .userAgent("ComsPlus/1.0")
+            .getSync(endpoint(serverUrl, "/activity?room=main"));
+        if (activityResponse.ok()) {
+            if (auto body = activityResponse.string()) {
+                activity = parseActivity(body.unwrap());
+            }
+        }
+
+        std::lock_guard lock(m_mutex);
+        if (!presence.empty()) {
+            m_presence = std::move(presence);
+        }
+        if (!activity.empty()) {
+            m_activity = std::move(activity);
+        }
+        m_metaLoading = false;
     }).detach();
 }
 

@@ -117,11 +117,11 @@ void refreshCurrentScenePrivacy() {
 }
 
 CCNode* bestChatOverlayParent(CCNode* fallback = nullptr) {
-    if (fallback) {
-        return fallback;
-    }
     if (auto scene = CCDirector::sharedDirector()->getRunningScene()) {
         return scene;
+    }
+    if (fallback) {
+        return fallback;
     }
     if (auto gm = GameManager::get()) {
         if (gm->m_playLayer) {
@@ -426,7 +426,6 @@ class $modify(ComsPlusPauseLayer, PauseLayer) {
         PauseLayer::customSetup();
         applyPrivacyTo(this);
         ensurePrivacyRefresher();
-        comsplus::raiseActiveChatOverlay();
 
 #ifndef GEODE_IS_ANDROID
         if (!comsplus::readSettings().chatEnabled || this->getChildByID("comsplus-desktop-chat-menu"_spr)) return;

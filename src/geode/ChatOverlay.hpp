@@ -42,7 +42,23 @@ private:
         None,
         Bubble,
         Panel,
-        Message
+        Message,
+        List
+    };
+
+    enum class ViewMode {
+        Chat,
+        Players,
+        Activity,
+        Commands,
+        Reports,
+        ReportHistory,
+        Blocks
+    };
+
+    struct TabHit {
+        cocos2d::CCRect rect;
+        ViewMode mode = ViewMode::Chat;
     };
 
     struct RenderedMessage {
@@ -58,9 +74,38 @@ private:
         std::string moderatorName;
     };
 
+    struct ChatMute {
+        std::string targetName;
+        std::int64_t targetAccountId = 0;
+        std::string reason;
+        std::string moderatorName;
+    };
+
+    struct ChatBlock {
+        std::string targetName;
+        std::int64_t targetAccountId = 0;
+    };
+
+    struct ChatReport {
+        ChatMessage message;
+    };
+
     struct MessageHit {
         cocos2d::CCRect rect;
         std::int64_t accountId = 0;
+    };
+
+    enum class ActionHitType {
+        None,
+        Unblock,
+        Report
+    };
+
+    struct ActionHit {
+        cocos2d::CCRect rect;
+        ActionHitType type = ActionHitType::None;
+        std::string targetName;
+        std::int64_t targetAccountId = 0;
     };
 
     void buildBubble();
@@ -69,6 +114,13 @@ private:
     void applyTouchPrioritiesDelayed(float);
     void updateLayout();
     void rebuild();
+    void renderMessages();
+    void renderPresence();
+    void renderActivity();
+    void renderCommands();
+    void renderReports();
+    void renderReportHistory();
+    void renderBlocks();
     void setExpanded(bool expanded);
     void openPanel();
     void appendMessage(ChatMessage message, bool local);
@@ -87,11 +139,24 @@ private:
     bool applyModeration(ChatMessage const& message);
     void pruneExpiredBans();
     bool isMessageBanned(ChatMessage const& message) const;
+    bool isMessageMuted(ChatMessage const& message) const;
+    bool isMessageBlocked(ChatMessage const& message) const;
     std::optional<ChatBan> localBan() const;
+    std::optional<ChatMute> localMute() const;
     std::optional<std::int64_t> accountIdForName(std::string const& name) const;
+    std::optional<ChatMessage> latestReportTarget() const;
+    void addLocalBlock(std::string targetName, std::int64_t targetAccountId);
+    void removeLocalBlock(std::string targetName, std::int64_t targetAccountId);
+    void rememberReport(ChatMessage message);
     bool shouldDisplayMessage(ChatMessage const& message) const;
     bool hasRainbowMessages() const;
     bool hasMessageId(std::string const& messageId) const;
+    bool canUseMetaTabs() const;
+    std::vector<ChatPresence> presenceRows() const;
+    std::vector<ChatActivity> activityRows() const;
+    bool pointInTab(cocos2d::CCPoint const& point, ViewMode& mode) const;
+    bool pointInMessageRoot(cocos2d::CCPoint const& point) const;
+    std::optional<ActionHit> actionAt(cocos2d::CCPoint const& point) const;
     bool pointInBubble(cocos2d::CCPoint const& point) const;
     bool pointInInput(cocos2d::CCPoint const& point) const;
     bool pointInPanel(cocos2d::CCPoint const& point) const;
@@ -108,8 +173,14 @@ private:
     cocos2d::CCLabelBMFont* m_status = nullptr;
     cocos2d::CCNode* m_messageRoot = nullptr;
     std::deque<RenderedMessage> m_messages;
+    std::deque<RenderedMessage> m_history;
     std::vector<MessageHit> m_messageHits;
+    std::vector<TabHit> m_tabHits;
+    std::vector<ActionHit> m_actionHits;
     std::vector<ChatBan> m_bans;
+    std::vector<ChatMute> m_mutes;
+    std::vector<ChatBlock> m_blocks;
+    std::vector<ChatReport> m_reports;
     std::unique_ptr<RateLimiter> m_rateLimiter;
     cocos2d::CCPoint m_bubblePosition = {0.0f, 0.0f};
     cocos2d::CCPoint m_panelPosition = {0.0f, 0.0f};
@@ -118,7 +189,10 @@ private:
     cocos2d::CCPoint m_touchStart = {0.0f, 0.0f};
     cocos2d::CCPoint m_dragStart = {0.0f, 0.0f};
     std::int64_t m_pressedAccountId = 0;
+    ActionHit m_pressedAction;
     DragMode m_dragMode = DragMode::None;
+    ViewMode m_viewMode = ViewMode::Chat;
+    ViewMode m_previousViewMode = ViewMode::Chat;
     bool m_expanded = false;
     bool m_dragged = false;
     bool m_reparenting = false;
@@ -129,8 +203,11 @@ private:
     float m_lastChatOpacity = 0.0f;
     float m_elapsed = 0.0f;
     float m_rainbowClock = 0.0f;
+    float m_listScroll = 0.0f;
     int m_touchPriorityRetries = 0;
     std::string m_joinedLevelKey;
+    std::string m_selectedReportTarget;
+    std::int64_t m_selectedReportAccountId = 0;
 };
 
 ComsPlusChatOverlay* activeChatOverlay();

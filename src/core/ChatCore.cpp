@@ -157,6 +157,8 @@ std::string_view kindToWire(ChatMessageKind kind) {
             return "system";
         case ChatMessageKind::Moderation:
             return "mod";
+        case ChatMessageKind::Report:
+            return "report";
         case ChatMessageKind::User:
         default:
             return "user";
@@ -185,6 +187,12 @@ std::string_view moderationActionToWire(ChatModerationAction action) {
             return "ban";
         case ChatModerationAction::TempBan:
             return "tempban";
+        case ChatModerationAction::Clear:
+            return "clear";
+        case ChatModerationAction::Mute:
+            return "mute";
+        case ChatModerationAction::Unmute:
+            return "unmute";
         case ChatModerationAction::None:
         default:
             return "none";
@@ -197,6 +205,9 @@ ChatMessageKind parseKind(std::optional<std::string> const& kind) {
     }
     if (kind && *kind == "mod") {
         return ChatMessageKind::Moderation;
+    }
+    if (kind && *kind == "report") {
+        return ChatMessageKind::Report;
     }
     return ChatMessageKind::User;
 }
@@ -224,6 +235,15 @@ ChatModerationAction parseModerationAction(std::optional<std::string> const& act
     }
     if (action && *action == "tempban") {
         return ChatModerationAction::TempBan;
+    }
+    if (action && *action == "clear") {
+        return ChatModerationAction::Clear;
+    }
+    if (action && *action == "mute") {
+        return ChatModerationAction::Mute;
+    }
+    if (action && *action == "unmute") {
+        return ChatModerationAction::Unmute;
     }
     return ChatModerationAction::None;
 }

@@ -10,7 +10,7 @@ else()
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 endif()
 
-project(ComsPlus VERSION 1.0.1 LANGUAGES CXX)
+project(ComsPlus VERSION 1.0.3 LANGUAGES CXX)
 
 option(COMSPLUS_BUILD_TESTS "Build ComsPlus unit tests" OFF)
 
@@ -47,7 +47,10 @@ if(DEFINED ENV{GEODE_SDK} AND NOT COMSPLUS_BUILD_TESTS)
     )
 
     set(GLOBED_DEP_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/geode-deps/dankmeme.globed2/include")
-    target_include_directories(${PROJECT_NAME} PRIVATE "${GLOBED_DEP_INCLUDE}")
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        "${GLOBED_DEP_INCLUDE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/globed2/include"
+    )
 
     message(STATUS "Found Geode: $ENV{GEODE_SDK}")
     add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)

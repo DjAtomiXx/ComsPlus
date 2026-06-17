@@ -15,7 +15,8 @@ enum class ChatNameMode {
 enum class ChatMessageKind {
     User,
     System,
-    Moderation
+    Moderation,
+    Report
 };
 
 enum class ChatColorMode {
@@ -32,7 +33,10 @@ enum class ChatAuthorRole {
 enum class ChatModerationAction {
     None,
     Ban,
-    TempBan
+    TempBan,
+    Clear,
+    Mute,
+    Unmute
 };
 
 enum class ChatSendResult {
@@ -66,6 +70,21 @@ struct ChatMessage {
     std::string targetName;
     std::int64_t targetAccountId = 0;
     std::int64_t expiresAt = 0;
+};
+
+struct ChatPresence {
+    std::int64_t accountId = 0;
+    std::string displayName;
+    std::string iconData;
+    std::int64_t joinedAt = 0;
+    std::int64_t lastSeen = 0;
+    int messageCount = 0;
+    bool usesComsPlus = false;
+};
+
+struct ChatActivity {
+    std::int64_t timestamp = 0;
+    std::string text;
 };
 
 class RateLimiter {

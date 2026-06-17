@@ -103,6 +103,40 @@ int main() {
     CHECK(decodedSystem->displayName == "Hidden");
     CHECK(decodedSystem->text == "joined the chat from Drillbit");
 
+    moderationMessage.messageId = "clear";
+    moderationMessage.text = "cleared the chat";
+    moderationMessage.moderationAction = ChatModerationAction::Clear;
+    moderationMessage.targetName = "";
+    moderationMessage.targetAccountId = 0;
+    auto decodedClear = decodePayload(encodePayload(moderationMessage));
+    CHECK(decodedClear.has_value());
+    CHECK(decodedClear->kind == ChatMessageKind::Moderation);
+    CHECK(decodedClear->authorRole == ChatAuthorRole::Dev);
+    CHECK(decodedClear->moderationAction == ChatModerationAction::Clear);
+    CHECK(decodedClear->text == "cleared the chat");
+
+    moderationMessage.messageId = "mute";
+    moderationMessage.text = "muted Target. Reason: spam";
+    moderationMessage.moderationAction = ChatModerationAction::Mute;
+    moderationMessage.targetName = "Target";
+    auto decodedMute = decodePayload(encodePayload(moderationMessage));
+    CHECK(decodedMute.has_value());
+    CHECK(decodedMute->moderationAction == ChatModerationAction::Mute);
+
+    ChatMessage reportMessage;
+    reportMessage.messageId = "report";
+    reportMessage.accountId = 42;
+    reportMessage.displayName = "Hidden";
+    reportMessage.iconData = "";
+    reportMessage.text = "toxic";
+    reportMessage.timestamp = 1237;
+    reportMessage.kind = ChatMessageKind::Report;
+    reportMessage.targetName = "Target";
+    auto decodedReport = decodePayload(encodePayload(reportMessage));
+    CHECK(decodedReport.has_value());
+    CHECK(decodedReport->kind == ChatMessageKind::Report);
+    CHECK(decodedReport->targetName == "Target");
+
     auto legacyDecoded = decodePayload("{\"v\":1,\"id\":\"legacy\",\"aid\":42,\"name\":\"Hidden\",\"icon\":\"cube:1\",\"text\":\"hello\",\"ts\":1236}");
     CHECK(legacyDecoded.has_value());
     CHECK(legacyDecoded->kind == ChatMessageKind::User);

@@ -1,5 +1,22 @@
 # ComsPlus Changelog
 
+## 1.0.3
+
+Compatibility update.
+
+- Improved Globed connection handling.
+- Improved Android stability.
+- Fixed various bugs.
+
+## 1.0.2
+
+Stability and chat update.
+
+- Improved chat tabs and player overview.
+- Improved level and main menu overlay behavior.
+- Added small moderation and safety tools.
+- Fixed various bugs.
+
 ## 1.0.1
 
 Readability update.

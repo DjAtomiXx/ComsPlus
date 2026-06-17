@@ -157,6 +157,22 @@ std::string durationText(std::int64_t durationMs) {
     return std::to_string(std::max<std::int64_t>(1, durationMs / second)) + "s";
 }
 
+std::string relativeTime(std::int64_t timestampMs) {
+    if (timestampMs <= 0) return "-";
+    auto delta = std::max<std::int64_t>(0, nowMs() - timestampMs);
+    constexpr std::int64_t second = 1000;
+    constexpr std::int64_t minute = 60 * second;
+    constexpr std::int64_t hour = 60 * minute;
+    if (delta < minute) return std::to_string(std::max<std::int64_t>(1, delta / second)) + "s";
+    if (delta < hour) return std::to_string(delta / minute) + "m";
+    return std::to_string(delta / hour) + "h";
+}
+
+std::string connectedFor(std::int64_t joinedAt) {
+    if (joinedAt <= 0) return "in level";
+    return relativeTime(joinedAt);
+}
+
 std::string moderationReason(std::string const& text) {
     auto marker = text.find("Reason: ");
     if (marker == std::string::npos) return sanitizeMessage(text);
@@ -481,6 +497,7 @@ void ComsPlusChatOverlay::buildBubble() {
 
 void ComsPlusChatOverlay::buildPanel() {
     m_sendMenu = nullptr;
+    m_tabHits.clear();
     m_touchPriorityRetries = 0;
 
     if (m_panelRoot) {
@@ -518,6 +535,55 @@ void ComsPlusChatOverlay::buildPanel() {
     title->setColor({255, 230, 232});
     title->setPosition({12.0f, size.height - headerHeight * 0.5f});
     m_panelRoot->addChild(title);
+
+    {
+        struct TabSpec {
+            char const* text;
+            ViewMode mode;
+            float width;
+        };
+
+        std::vector<TabSpec> specs;
+        specs.push_back({"Chat", ViewMode::Chat, isMobileLayout() ? 45.0f : 40.0f});
+        if (canUseMetaTabs()) {
+            specs.push_back({"Players", ViewMode::Players, isMobileLayout() ? 66.0f : 56.0f});
+            specs.push_back({"Act", ViewMode::Activity, isMobileLayout() ? 43.0f : 38.0f});
+        }
+        if (isLocalDevUser()) {
+            specs.push_back({"Cmds", ViewMode::Commands, isMobileLayout() ? 49.0f : 44.0f});
+            specs.push_back({"Reports", ViewMode::Reports, isMobileLayout() ? 65.0f : 58.0f});
+        }
+        specs.push_back({"Blocks", ViewMode::Blocks, isMobileLayout() ? 60.0f : 52.0f});
+
+        auto currentAllowed = std::any_of(specs.begin(), specs.end(), [&](TabSpec const& tab) {
+            return tab.mode == m_viewMode;
+        });
+        if (!currentAllowed) {
+            m_viewMode = ViewMode::Chat;
+        }
+
+        auto x = isMobileLayout() ? 108.0f : 102.0f;
+        auto tabHeight = isMobileLayout() ? 18.0f : 15.0f;
+        auto tabY = size.height - headerHeight * 0.5f - tabHeight * 0.5f;
+        for (auto const& tab : specs) {
+            if (x + tab.width > size.width - (isMobileLayout() ? 34.0f : 86.0f)) break;
+            auto active = m_viewMode == tab.mode;
+            m_panelRoot->addChild(rect(
+                active ? ccColor4B{accent.r, accent.g, accent.b, 74} : ccColor4B{4, 10, 20, 92},
+                {tab.width, tabHeight},
+                {x, tabY}
+            ));
+            auto label = CCLabelBMFont::create(tab.text, "chatFont.fnt");
+            label->setAnchorPoint({0.5f, 0.5f});
+            label->setScale(isMobileLayout() ? 0.34f : 0.29f);
+            label->setColor(active ? ccColor3B{230, 250, 255} : ccColor3B{158, 205, 226});
+            label->setPosition({x + tab.width * 0.5f, tabY + tabHeight * 0.5f});
+            label->limitLabelWidth(tab.width - 8.0f, isMobileLayout() ? 0.34f : 0.29f, 0.08f);
+            m_panelRoot->addChild(label);
+            m_tabHits.push_back({CCRectMake(x, tabY, tab.width, tabHeight), tab.mode});
+            x += tab.width + 5.0f;
+        }
+    }
 
     if (isMobileLayout()) {
         auto closeHint = CCLabelBMFont::create("x", "bigFont.fnt");
@@ -702,10 +768,22 @@ bool ComsPlusChatOverlay::ccTouchBegan(CCTouch* touch, CCEvent*) {
     auto point = touch->getLocation();
     m_touchStart = point;
     m_dragged = false;
+    m_pressedAccountId = 0;
+    m_pressedAction = {};
 
     if (!m_expanded && pointInBubble(point)) {
         m_dragMode = DragMode::Bubble;
         m_dragStart = m_bubblePosition;
+        return true;
+    }
+
+    ViewMode tabMode = ViewMode::Chat;
+    if (m_expanded && pointInTab(point, tabMode)) {
+        m_previousViewMode = m_viewMode;
+        m_viewMode = tabMode;
+        m_listScroll = 0.0f;
+        rebuild();
+        m_dragMode = DragMode::None;
         return true;
     }
 
@@ -721,9 +799,20 @@ bool ComsPlusChatOverlay::ccTouchBegan(CCTouch* touch, CCEvent*) {
             m_dragMode = DragMode::None;
             return true;
         }
+        if (auto action = actionAt(point)) {
+            m_dragMode = DragMode::List;
+            m_dragStart = CCPoint{0.0f, m_listScroll};
+            m_pressedAction = *action;
+            return true;
+        }
         if (auto accountId = accountIdAt(point)) {
             m_dragMode = DragMode::Message;
             m_pressedAccountId = *accountId;
+            return true;
+        }
+        if (m_viewMode != ViewMode::Chat && pointInMessageRoot(point)) {
+            m_dragMode = DragMode::List;
+            m_dragStart = CCPoint{0.0f, m_listScroll};
             return true;
         }
         m_dragMode = DragMode::None;
@@ -732,6 +821,11 @@ bool ComsPlusChatOverlay::ccTouchBegan(CCTouch* touch, CCEvent*) {
 
     if (m_expanded && isMobileLayout()) {
         collapse();
+        m_dragMode = DragMode::None;
+        return true;
+    }
+
+    if (m_expanded) {
         m_dragMode = DragMode::None;
         return true;
     }
@@ -753,6 +847,8 @@ void ComsPlusChatOverlay::ccTouchMoved(CCTouch* touch, CCEvent*) {
         m_bubblePosition = clampedBubblePosition(add(m_dragStart, delta));
     } else if (m_dragMode == DragMode::Panel && !isMobileLayout()) {
         m_panelPosition = clampedPanelPosition(add(m_dragStart, delta));
+    } else if (m_dragMode == DragMode::List) {
+        m_listScroll = std::max(0.0f, m_dragStart.y - delta.y);
     }
     updateLayout();
 }
@@ -764,8 +860,22 @@ void ComsPlusChatOverlay::ccTouchEnded(CCTouch*, CCEvent*) {
         collapse();
     } else if (m_dragMode == DragMode::Message && !m_dragged && m_pressedAccountId > 0) {
         openProfile(m_pressedAccountId);
+    } else if (m_dragMode == DragMode::List && !m_dragged && m_pressedAction.type != ActionHitType::None) {
+        if (m_pressedAction.type == ActionHitType::Unblock) {
+            removeLocalBlock(m_pressedAction.targetName, m_pressedAction.targetAccountId);
+            if (m_status) m_status->setString("User unblocked");
+            rebuild();
+        } else if (m_pressedAction.type == ActionHitType::Report) {
+            m_previousViewMode = m_viewMode;
+            m_selectedReportTarget = m_pressedAction.targetName;
+            m_selectedReportAccountId = m_pressedAction.targetAccountId;
+            m_viewMode = ViewMode::ReportHistory;
+            m_listScroll = 0.0f;
+            rebuild();
+        }
     }
     m_pressedAccountId = 0;
+    m_pressedAction = {};
     m_dragMode = DragMode::None;
 }
 
@@ -822,6 +932,13 @@ void ComsPlusChatOverlay::tick(float dt) {
     for (auto& message : received) {
         if (hasMessageId(message.messageId)) continue;
         if (!shouldDisplayMessage(message)) continue;
+        if (message.kind == ChatMessageKind::Report) {
+            if (isLocalDevUser()) {
+                rememberReport(std::move(message));
+                receivedAny = true;
+            }
+            continue;
+        }
         if (message.kind == ChatMessageKind::Moderation) {
             if (!applyModeration(message)) continue;
             receivedAny = true;
@@ -829,10 +946,14 @@ void ComsPlusChatOverlay::tick(float dt) {
             continue;
         }
         if (isMessageBanned(message)) continue;
+        if (isMessageMuted(message)) continue;
+        if (isMessageBlocked(message)) continue;
         receivedAny = true;
         appendMessage(std::move(message), false);
     }
-    if (!receivedAny && hasRainbowMessages()) {
+    if (m_viewMode != ViewMode::Chat) {
+        rebuild();
+    } else if (!receivedAny && hasRainbowMessages()) {
         rebuild();
     }
 }
@@ -853,6 +974,11 @@ void ComsPlusChatOverlay::onSend(CCObject*) {
     auto ban = localBan();
     if (ban.has_value()) {
         if (m_status) m_status->setString(("Chat banned: " + ban->reason).c_str());
+        return;
+    }
+    auto mute = localMute();
+    if (mute.has_value()) {
+        if (m_status) m_status->setString(("Chat muted: " + mute->reason).c_str());
         return;
     }
 
@@ -882,6 +1008,16 @@ void ComsPlusChatOverlay::onSend(CCObject*) {
 
 void ComsPlusChatOverlay::appendMessage(ChatMessage message, bool local) {
     auto settings = readSettings();
+    m_history.push_back({message, local});
+    while (m_history.size() > 220) {
+        m_history.pop_front();
+    }
+
+    if (isMessageBanned(message) || isMessageMuted(message) || isMessageBlocked(message)) {
+        rebuild();
+        return;
+    }
+
     m_messages.push_back({std::move(message), local});
     while (static_cast<int>(m_messages.size()) > settings.maxChatMessages) {
         m_messages.pop_front();
@@ -949,7 +1085,6 @@ ChatMessage ComsPlusChatOverlay::makeModerationMessage(
     auto message = makeLocalMessage("");
     auto cleanTarget = sanitizeName(targetName);
     auto cleanReason = sanitizeMessage(reason);
-    if (cleanReason.empty()) cleanReason = "No reason";
 
     message.kind = ChatMessageKind::Moderation;
     message.iconData = "";
@@ -959,10 +1094,21 @@ ChatMessage ComsPlusChatOverlay::makeModerationMessage(
     message.targetAccountId = targetAccountId;
     message.expiresAt = expiresAt;
 
-    if (action == ChatModerationAction::TempBan) {
+    if (action == ChatModerationAction::Clear) {
+        message.text = cleanReason.empty() ?
+            sanitizeMessage("cleared the chat") :
+            sanitizeMessage("cleared the chat. Reason: " + cleanReason);
+    } else if (action == ChatModerationAction::Mute) {
+        if (cleanReason.empty()) cleanReason = "No reason";
+        message.text = sanitizeMessage("muted " + cleanTarget + ". Reason: " + cleanReason);
+    } else if (action == ChatModerationAction::Unmute) {
+        message.text = sanitizeMessage("unmuted " + cleanTarget);
+    } else if (action == ChatModerationAction::TempBan) {
+        if (cleanReason.empty()) cleanReason = "No reason";
         auto duration = std::max<std::int64_t>(1000, expiresAt - nowMs());
         message.text = sanitizeMessage("tempbanned " + cleanTarget + " for " + durationText(duration) + ". Reason: " + cleanReason);
     } else {
+        if (cleanReason.empty()) cleanReason = "No reason";
         message.text = sanitizeMessage("banned " + cleanTarget + ". Reason: " + cleanReason);
     }
 
@@ -974,9 +1120,92 @@ bool ComsPlusChatOverlay::handleCommand(std::string const& text) {
     if (parts.empty()) return false;
 
     auto command = lowercaseAscii(parts.front());
+    auto sendChatMessage = [&](ChatMessage const& message) {
+        return isMainMenuContext() ? GlobalChatBridge::get().sendChat(message) : GlobedBridge::get().sendChat(message);
+    };
+    auto setBridgeStatus = [&] {
+        if (!m_status) return;
+        auto status = isMainMenuContext() ? GlobalChatBridge::get().statusText() : GlobedBridge::get().statusText();
+        m_status->setString(status.c_str());
+    };
+
+    if (command == "/block") {
+        if (parts.size() < 2) {
+            if (m_status) m_status->setString("/block \"User\"");
+            return false;
+        }
+        auto targetName = sanitizeName(parts[1]);
+        if (targetName.empty()) {
+            if (m_status) m_status->setString("Missing target");
+            return false;
+        }
+        addLocalBlock(targetName, accountIdForName(targetName).value_or(0));
+        if (m_status) m_status->setString(("Blocked " + targetName).c_str());
+        return true;
+    }
+
+    if (command == "/unblock") {
+        if (parts.size() < 2) {
+            if (m_status) m_status->setString("/unblock \"User\"");
+            return false;
+        }
+        auto targetName = sanitizeName(parts[1]);
+        removeLocalBlock(targetName, accountIdForName(targetName).value_or(0));
+        if (m_status) m_status->setString(("Unblocked " + targetName).c_str());
+        return true;
+    }
+
+    if (command == "/report") {
+        if (parts.size() < 2) {
+            if (m_status) m_status->setString("/report \"Reason\"");
+            return false;
+        }
+
+        auto target = std::optional<ChatMessage>{};
+        auto reasonStart = std::size_t{1};
+        if (parts.size() >= 3) {
+            auto explicitName = sanitizeName(parts[1]);
+            auto explicitId = accountIdForName(explicitName).value_or(0);
+            target = ChatMessage{};
+            target->displayName = explicitName;
+            target->accountId = explicitId;
+            reasonStart = 2;
+        } else {
+            target = latestReportTarget();
+        }
+
+        if (!target.has_value() || sanitizeName(target->displayName).empty()) {
+            if (m_status) m_status->setString("No recent user to report");
+            return false;
+        }
+
+        auto reason = sanitizeMessage(joinArgs(parts, reasonStart));
+        if (reason.empty()) {
+            if (m_status) m_status->setString("Missing report reason");
+            return false;
+        }
+
+        auto message = makeLocalMessage(reason);
+        message.kind = ChatMessageKind::Report;
+        message.iconData = "";
+        message.targetName = sanitizeName(target->displayName);
+        message.targetAccountId = target->accountId;
+
+        auto result = sendChatMessage(message);
+        if (result == ChatSendResult::Failed) {
+            setBridgeStatus();
+            return false;
+        }
+        if (m_status) m_status->setString(result == ChatSendResult::Queued ? "Report queued" : "Report sent");
+        return true;
+    }
+
     auto isBan = command == "/ban";
     auto isTempBan = command == "/tempban";
-    if (!isBan && !isTempBan) {
+    auto isClear = command == "/clear";
+    auto isMute = command == "/mute";
+    auto isUnmute = command == "/unmute";
+    if (!isBan && !isTempBan && !isClear && !isMute && !isUnmute) {
         if (m_status) m_status->setString("Unknown command");
         return true;
     }
@@ -986,8 +1215,36 @@ bool ComsPlusChatOverlay::handleCommand(std::string const& text) {
         return true;
     }
 
-    if (parts.size() < 3) {
-        if (m_status) m_status->setString(isTempBan ? "/tempban \"User\" [1h] \"Reason\"" : "/ban \"User\" \"Reason\"");
+    if (isClear) {
+        auto reason = sanitizeMessage(joinArgs(parts, 1));
+        auto message = makeModerationMessage(ChatModerationAction::Clear, "", 0, reason, 0);
+        auto result = sendChatMessage(message);
+        if (result == ChatSendResult::Failed) {
+            setBridgeStatus();
+            return false;
+        }
+
+        applyModeration(message);
+        appendMessage(std::move(message), true);
+        if (m_status) {
+            m_status->setString(result == ChatSendResult::Queued ? "Clear queued" : "Chat cleared");
+        }
+        return true;
+    }
+
+    auto minArgs = isUnmute ? 2 : 3;
+    if (parts.size() < static_cast<std::size_t>(minArgs)) {
+        if (m_status) {
+            if (isTempBan) {
+                m_status->setString("/tempban \"User\" [1h] \"Reason\"");
+            } else if (isMute) {
+                m_status->setString("/mute \"User\" \"Reason\"");
+            } else if (isUnmute) {
+                m_status->setString("/unmute \"User\"");
+            } else {
+                m_status->setString("/ban \"User\" \"Reason\"");
+            }
+        }
         return false;
     }
 
@@ -1006,25 +1263,31 @@ bool ComsPlusChatOverlay::handleCommand(std::string const& text) {
         }
     }
 
-    auto reason = sanitizeMessage(joinArgs(parts, reasonStart));
+    auto reason = isUnmute ? std::string{} : sanitizeMessage(joinArgs(parts, reasonStart));
     if (reason.empty()) reason = "No reason";
 
     auto targetAccountId = accountIdForName(targetName).value_or(0);
     auto expiresAt = isTempBan ? nowMs() + durationMs : 0;
+    auto action = ChatModerationAction::Ban;
+    if (isTempBan) {
+        action = ChatModerationAction::TempBan;
+    } else if (isMute) {
+        action = ChatModerationAction::Mute;
+    } else if (isUnmute) {
+        action = ChatModerationAction::Unmute;
+        reason.clear();
+    }
     auto message = makeModerationMessage(
-        isTempBan ? ChatModerationAction::TempBan : ChatModerationAction::Ban,
+        action,
         targetName,
         targetAccountId,
         reason,
         expiresAt
     );
 
-    auto result = isMainMenuContext() ? GlobalChatBridge::get().sendChat(message) : GlobedBridge::get().sendChat(message);
+    auto result = sendChatMessage(message);
     if (result == ChatSendResult::Failed) {
-        if (m_status) {
-            auto status = isMainMenuContext() ? GlobalChatBridge::get().statusText() : GlobedBridge::get().statusText();
-            m_status->setString(status.c_str());
-        }
+        setBridgeStatus();
         return false;
     }
 
@@ -1039,6 +1302,47 @@ bool ComsPlusChatOverlay::handleCommand(std::string const& text) {
 bool ComsPlusChatOverlay::applyModeration(ChatMessage const& message) {
     if (message.kind != ChatMessageKind::Moderation || message.authorRole != ChatAuthorRole::Dev) {
         return false;
+    }
+    if (message.moderationAction == ChatModerationAction::Clear) {
+        m_messages.clear();
+        m_messageHits.clear();
+        return true;
+    }
+    if (message.moderationAction == ChatModerationAction::Unmute) {
+        auto targetName = sanitizeName(message.targetName);
+        if (targetName.empty()) return false;
+        m_mutes.erase(
+            std::remove_if(m_mutes.begin(), m_mutes.end(), [&](ChatMute const& existing) {
+                if (message.targetAccountId != 0 && existing.targetAccountId == message.targetAccountId) return true;
+                return namesEqual(existing.targetName, targetName);
+            }),
+            m_mutes.end()
+        );
+        return true;
+    }
+    if (message.moderationAction == ChatModerationAction::Mute) {
+        auto targetName = sanitizeName(message.targetName);
+        if (targetName.empty()) return false;
+
+        ChatMute mute;
+        mute.targetName = targetName;
+        mute.targetAccountId = message.targetAccountId;
+        mute.reason = moderationReason(message.text);
+        mute.moderatorName = sanitizeName(message.displayName);
+
+        auto sameTarget = [&](ChatMute const& existing) {
+            if (mute.targetAccountId != 0 && existing.targetAccountId == mute.targetAccountId) return true;
+            return namesEqual(existing.targetName, mute.targetName);
+        };
+        m_mutes.erase(std::remove_if(m_mutes.begin(), m_mutes.end(), sameTarget), m_mutes.end());
+        m_mutes.push_back(std::move(mute));
+        m_messages.erase(
+            std::remove_if(m_messages.begin(), m_messages.end(), [&](RenderedMessage const& rendered) {
+                return rendered.message.kind == ChatMessageKind::User && isMessageMuted(rendered.message);
+            }),
+            m_messages.end()
+        );
+        return true;
     }
     if (
         message.moderationAction != ChatModerationAction::Ban &&
@@ -1097,6 +1401,24 @@ bool ComsPlusChatOverlay::isMessageBanned(ChatMessage const& message) const {
     return false;
 }
 
+bool ComsPlusChatOverlay::isMessageMuted(ChatMessage const& message) const {
+    if (message.kind != ChatMessageKind::User) return false;
+    for (auto const& mute : m_mutes) {
+        if (mute.targetAccountId != 0 && message.accountId == mute.targetAccountId) return true;
+        if (namesEqual(mute.targetName, message.displayName)) return true;
+    }
+    return false;
+}
+
+bool ComsPlusChatOverlay::isMessageBlocked(ChatMessage const& message) const {
+    if (message.kind != ChatMessageKind::User && message.kind != ChatMessageKind::System) return false;
+    for (auto const& block : m_blocks) {
+        if (block.targetAccountId != 0 && message.accountId == block.targetAccountId) return true;
+        if (namesEqual(block.targetName, message.displayName)) return true;
+    }
+    return false;
+}
+
 std::optional<ComsPlusChatOverlay::ChatBan> ComsPlusChatOverlay::localBan() const {
     auto accountId = localAccountId();
     auto settings = readSettings();
@@ -1121,13 +1443,106 @@ std::optional<ComsPlusChatOverlay::ChatBan> ComsPlusChatOverlay::localBan() cons
     return std::nullopt;
 }
 
+std::optional<ComsPlusChatOverlay::ChatMute> ComsPlusChatOverlay::localMute() const {
+    auto accountId = localAccountId();
+    auto settings = readSettings();
+    DisplayNameSettings displaySettings{
+        settings.privacyEnabled,
+        settings.fakeName,
+        settings.chatNameMode
+    };
+    auto displayName = selectDisplayName(localRealName(), displaySettings);
+    auto realNames = localRealNameCandidates();
+
+    for (auto const& mute : m_mutes) {
+        if (mute.targetAccountId != 0 && accountId != 0 && mute.targetAccountId == accountId) return mute;
+        if (namesEqual(mute.targetName, displayName)) return mute;
+        if (std::any_of(realNames.begin(), realNames.end(), [&](std::string const& realName) {
+            return namesEqual(mute.targetName, realName);
+        })) {
+            return mute;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<std::int64_t> ComsPlusChatOverlay::accountIdForName(std::string const& name) const {
     for (auto it = m_messages.rbegin(); it != m_messages.rend(); ++it) {
         if (it->message.accountId != 0 && namesEqual(it->message.displayName, name)) {
             return it->message.accountId;
         }
     }
+    for (auto it = m_history.rbegin(); it != m_history.rend(); ++it) {
+        if (it->message.accountId != 0 && namesEqual(it->message.displayName, name)) {
+            return it->message.accountId;
+        }
+    }
+    for (auto const& row : presenceRows()) {
+        if (row.accountId != 0 && namesEqual(row.displayName, name)) {
+            return row.accountId;
+        }
+    }
     return std::nullopt;
+}
+
+std::optional<ChatMessage> ComsPlusChatOverlay::latestReportTarget() const {
+    for (auto it = m_messages.rbegin(); it != m_messages.rend(); ++it) {
+        if (it->local) continue;
+        if (it->message.kind != ChatMessageKind::User) continue;
+        if (isMessageBlocked(it->message)) continue;
+        return it->message;
+    }
+    for (auto it = m_history.rbegin(); it != m_history.rend(); ++it) {
+        if (it->local) continue;
+        if (it->message.kind != ChatMessageKind::User) continue;
+        if (isMessageBlocked(it->message)) continue;
+        return it->message;
+    }
+    return std::nullopt;
+}
+
+void ComsPlusChatOverlay::addLocalBlock(std::string targetName, std::int64_t targetAccountId) {
+    auto cleanTarget = sanitizeName(targetName);
+    if (cleanTarget.empty()) return;
+
+    m_blocks.erase(
+        std::remove_if(m_blocks.begin(), m_blocks.end(), [&](ChatBlock const& existing) {
+            if (targetAccountId != 0 && existing.targetAccountId == targetAccountId) return true;
+            return namesEqual(existing.targetName, cleanTarget);
+        }),
+        m_blocks.end()
+    );
+    m_blocks.push_back({cleanTarget, targetAccountId});
+    m_messages.erase(
+        std::remove_if(m_messages.begin(), m_messages.end(), [&](RenderedMessage const& rendered) {
+            return isMessageBlocked(rendered.message);
+        }),
+        m_messages.end()
+    );
+    rebuild();
+}
+
+void ComsPlusChatOverlay::removeLocalBlock(std::string targetName, std::int64_t targetAccountId) {
+    auto cleanTarget = sanitizeName(targetName);
+    m_blocks.erase(
+        std::remove_if(m_blocks.begin(), m_blocks.end(), [&](ChatBlock const& existing) {
+            if (targetAccountId != 0 && existing.targetAccountId == targetAccountId) return true;
+            return !cleanTarget.empty() && namesEqual(existing.targetName, cleanTarget);
+        }),
+        m_blocks.end()
+    );
+    rebuild();
+}
+
+void ComsPlusChatOverlay::rememberReport(ChatMessage message) {
+    if (message.kind != ChatMessageKind::Report) return;
+    m_reports.push_back({std::move(message)});
+    while (m_reports.size() > 80) {
+        m_reports.erase(m_reports.begin());
+    }
+    if (m_viewMode == ViewMode::Reports || m_viewMode == ViewMode::ReportHistory) {
+        rebuild();
+    }
 }
 
 bool ComsPlusChatOverlay::shouldDisplayMessage(ChatMessage const& message) const {
@@ -1151,9 +1566,85 @@ bool ComsPlusChatOverlay::hasRainbowMessages() const {
 
 bool ComsPlusChatOverlay::hasMessageId(std::string const& messageId) const {
     if (messageId.empty()) return false;
-    return std::any_of(m_messages.begin(), m_messages.end(), [&](RenderedMessage const& rendered) {
+    auto inMessages = std::any_of(m_messages.begin(), m_messages.end(), [&](RenderedMessage const& rendered) {
         return rendered.message.messageId == messageId;
     });
+    if (inMessages) return true;
+    auto inHistory = std::any_of(m_history.begin(), m_history.end(), [&](RenderedMessage const& rendered) {
+        return rendered.message.messageId == messageId;
+    });
+    if (inHistory) return true;
+    return std::any_of(m_reports.begin(), m_reports.end(), [&](ChatReport const& report) {
+        return report.message.messageId == messageId;
+    });
+}
+
+bool ComsPlusChatOverlay::canUseMetaTabs() const {
+    return isMainMenuContext() || isLocalDevUser();
+}
+
+std::vector<ChatPresence> ComsPlusChatOverlay::presenceRows() const {
+    if (isMainMenuContext()) {
+        return GlobalChatBridge::get().presenceSnapshot();
+    }
+    if (!isLocalDevUser()) {
+        return {};
+    }
+    auto rows = GlobedBridge::get().presenceSnapshot();
+    auto markFromMessage = [&](ChatMessage const& message) {
+        if (message.accountId == 0 && message.displayName.empty()) return;
+        for (auto& row : rows) {
+            if (message.accountId != 0 && row.accountId == message.accountId) {
+                row.usesComsPlus = true;
+                ++row.messageCount;
+                row.lastSeen = std::max(row.lastSeen, message.timestamp);
+                continue;
+            }
+            if (namesEqual(row.displayName, message.displayName)) {
+                row.usesComsPlus = true;
+                ++row.messageCount;
+                row.lastSeen = std::max(row.lastSeen, message.timestamp);
+            }
+        }
+    };
+    for (auto const& rendered : m_history) {
+        if (rendered.message.kind == ChatMessageKind::User || rendered.message.kind == ChatMessageKind::System) {
+            markFromMessage(rendered.message);
+        }
+    }
+    for (auto const& rendered : m_messages) {
+        if (rendered.message.kind == ChatMessageKind::User || rendered.message.kind == ChatMessageKind::System) {
+            markFromMessage(rendered.message);
+        }
+    }
+    std::sort(rows.begin(), rows.end(), [](ChatPresence const& left, ChatPresence const& right) {
+        if (left.usesComsPlus != right.usesComsPlus) return left.usesComsPlus > right.usesComsPlus;
+        return lowercaseAscii(left.displayName) < lowercaseAscii(right.displayName);
+    });
+    return rows;
+}
+
+std::vector<ChatActivity> ComsPlusChatOverlay::activityRows() const {
+    if (isMainMenuContext()) {
+        return GlobalChatBridge::get().activitySnapshot();
+    }
+
+    std::vector<ChatActivity> out;
+    if (!isLocalDevUser()) return out;
+    for (auto it = m_messages.rbegin(); it != m_messages.rend() && out.size() < 60; ++it) {
+        ChatActivity row;
+        row.timestamp = it->message.timestamp;
+        if (it->message.kind == ChatMessageKind::System) {
+            row.text = it->message.displayName + " " + it->message.text;
+        } else if (it->message.kind == ChatMessageKind::Moderation) {
+            row.text = "Dev " + it->message.displayName + " " + it->message.text;
+        } else {
+            row.text = it->message.displayName + " sent a message";
+        }
+        row.text = sanitizeMessage(row.text);
+        if (!row.text.empty()) out.push_back(std::move(row));
+    }
+    return out;
 }
 
 CCNode* ComsPlusChatOverlay::createIconNode(std::string const& iconData) const {
@@ -1165,12 +1656,12 @@ CCNode* ComsPlusChatOverlay::createIconNode(std::string const& iconData) const {
     if (icon) {
         icon->setColor(colorFor(color1));
         icon->setSecondColor(colorFor(color2));
-        icon->setScale(isMobileLayout() ? 0.56f : 0.42f);
+        icon->setScale(isMobileLayout() ? 0.66f : 0.48f);
         return icon;
     }
 
     auto fallback = CCLabelBMFont::create("[]", "chatFont.fnt");
-    fallback->setScale(isMobileLayout() ? 0.82f : 0.62f);
+    fallback->setScale(isMobileLayout() ? 0.92f : 0.68f);
     return fallback;
 }
 
@@ -1178,6 +1669,53 @@ void ComsPlusChatOverlay::rebuild() {
     if (!m_messageRoot) return;
     m_messageRoot->removeAllChildrenWithCleanup(true);
     m_messageHits.clear();
+    m_actionHits.clear();
+    if (!canUseMetaTabs() && (m_viewMode == ViewMode::Players || m_viewMode == ViewMode::Activity)) {
+        m_viewMode = ViewMode::Chat;
+    }
+    if (!isLocalDevUser() && (
+        m_viewMode == ViewMode::Commands ||
+        m_viewMode == ViewMode::Reports ||
+        m_viewMode == ViewMode::ReportHistory
+    )) {
+        m_viewMode = ViewMode::Chat;
+    }
+
+    if (m_viewMode == ViewMode::Players) {
+        renderPresence();
+        return;
+    }
+
+    if (m_viewMode == ViewMode::Activity) {
+        renderActivity();
+        return;
+    }
+
+    if (m_viewMode == ViewMode::Commands) {
+        renderCommands();
+        return;
+    }
+
+    if (m_viewMode == ViewMode::Reports) {
+        renderReports();
+        return;
+    }
+
+    if (m_viewMode == ViewMode::ReportHistory) {
+        renderReportHistory();
+        return;
+    }
+
+    if (m_viewMode == ViewMode::Blocks) {
+        renderBlocks();
+        return;
+    }
+
+    renderMessages();
+}
+
+void ComsPlusChatOverlay::renderMessages() {
+    if (!m_messageRoot) return;
 
     auto rootSize = m_messageRoot->getContentSize();
     float y = 3.0f;
@@ -1187,6 +1725,8 @@ void ComsPlusChatOverlay::rebuild() {
     for (auto it = m_messages.rbegin(); it != m_messages.rend(); ++it, ++index) {
         auto const& rendered = *it;
         if (!shouldDisplayMessage(rendered.message)) continue;
+        if (isMessageBanned(rendered.message) || isMessageMuted(rendered.message) || isMessageBlocked(rendered.message)) continue;
+        if (rendered.message.kind == ChatMessageKind::Report) continue;
         if (rendered.message.kind == ChatMessageKind::System || rendered.message.kind == ChatMessageKind::Moderation) {
             auto rowHeight = isMobileLayout() ? 21.0f : 17.0f;
             if (y + rowHeight > rootSize.height) break;
@@ -1215,7 +1755,7 @@ void ComsPlusChatOverlay::rebuild() {
             continue;
         }
 
-        auto rowHeight = isMobileLayout() ? 56.0f : 46.0f;
+        auto rowHeight = isMobileLayout() ? 64.0f : 50.0f;
         if (y + rowHeight > rootSize.height) break;
 
         auto rowPhase = phase + static_cast<float>(index) * 0.45f;
@@ -1226,30 +1766,30 @@ void ComsPlusChatOverlay::rebuild() {
 
         auto icon = createIconNode(rendered.message.iconData);
         icon->setAnchorPoint({0.5f, 0.5f});
-        auto iconCenterX = isMobileLayout() ? 30.0f : 22.0f;
-        auto iconCenterY = y + rowHeight - (isMobileLayout() ? 18.0f : 15.5f);
+        auto iconCenterX = isMobileLayout() ? 34.0f : 25.0f;
+        auto iconCenterY = y + rowHeight - (isMobileLayout() ? 21.0f : 17.0f);
         icon->setPosition({iconCenterX, iconCenterY});
         m_messageRoot->addChild(icon);
 
         auto name = CCLabelBMFont::create(rendered.message.displayName.c_str(), "chatFont.fnt");
         name->setAnchorPoint({0.0f, 0.5f});
-        auto nameScale = isMobileLayout() ? 0.57f : 0.46f;
-        auto textScale = isMobileLayout() ? 0.48f : 0.39f;
-        auto textX = isMobileLayout() ? 66.0f : 49.0f;
+        auto nameScale = isMobileLayout() ? 0.66f : 0.50f;
+        auto textScale = isMobileLayout() ? 0.58f : 0.43f;
+        auto textX = isMobileLayout() ? 74.0f : 56.0f;
         name->setScale(nameScale);
         name->setColor(accent);
-        name->setPosition({textX, y + rowHeight - (isMobileLayout() ? 16.0f : 13.5f)});
+        name->setPosition({textX, y + rowHeight - (isMobileLayout() ? 19.0f : 15.0f)});
         name->limitLabelWidth(rootSize.width - textX - 62.0f, nameScale, 0.1f);
         m_messageRoot->addChild(name);
 
         if (hasDevBadge(rendered.message)) {
             auto nameWidth = std::min(name->getScaledContentWidth(), rootSize.width - textX - 76.0f);
             auto badgeX = textX + nameWidth + 8.0f;
-            auto badgeY = y + rowHeight - (isMobileLayout() ? 15.6f : 13.2f);
+            auto badgeY = y + rowHeight - (isMobileLayout() ? 18.5f : 14.6f);
 
             auto badge = CCLabelBMFont::create("Dev", "chatFont.fnt");
             badge->setAnchorPoint({0.0f, 0.5f});
-            badge->setScale(isMobileLayout() ? 0.34f : 0.27f);
+            badge->setScale(isMobileLayout() ? 0.40f : 0.30f);
             badge->setColor({135, 226, 255});
             badge->setPosition({badgeX, badgeY});
             badge->limitLabelWidth(40.0f, isMobileLayout() ? 0.34f : 0.27f, 0.1f);
@@ -1260,7 +1800,7 @@ void ComsPlusChatOverlay::rebuild() {
         text->setAnchorPoint({0.0f, 0.5f});
         text->setScale(textScale);
         text->setColor(messageBodyColor(rendered.message, rendered.local, rowPhase));
-        text->setPosition({textX, y + (isMobileLayout() ? 15.0f : 12.0f)});
+        text->setPosition({textX, y + (isMobileLayout() ? 17.0f : 13.0f)});
         text->limitLabelWidth(rootSize.width - textX - 12.0f, textScale, 0.075f);
         m_messageRoot->addChild(text);
 
@@ -1269,6 +1809,315 @@ void ComsPlusChatOverlay::rebuild() {
         }
 
         y += rowHeight + 3.0f;
+    }
+}
+
+void ComsPlusChatOverlay::renderPresence() {
+    if (!m_messageRoot) return;
+    auto rootSize = m_messageRoot->getContentSize();
+    auto rows = presenceRows();
+
+    auto countText = std::to_string(rows.size()) + (rows.size() == 1 ? " player connected" : " players connected");
+    auto count = CCLabelBMFont::create(countText.c_str(), "chatFont.fnt");
+    count->setAnchorPoint({0.0f, 0.5f});
+    count->setScale(isMobileLayout() ? 0.45f : 0.36f);
+    count->setColor({162, 224, 255});
+    count->setPosition({6.0f, rootSize.height - 10.0f});
+    count->limitLabelWidth(rootSize.width - 12.0f, isMobileLayout() ? 0.45f : 0.36f, 0.08f);
+    m_messageRoot->addChild(count);
+
+    auto y = rootSize.height - (isMobileLayout() ? 46.0f : 38.0f) + m_listScroll;
+    auto rowHeight = isMobileLayout() ? 48.0f : 38.0f;
+    for (auto const& rowData : rows) {
+        if (y + rowHeight < 0.0f) break;
+        if (y > rootSize.height - 22.0f) {
+            y -= rowHeight;
+            continue;
+        }
+        m_messageRoot->addChild(rect({8, 22, 36, 88}, {rootSize.width, rowHeight - 3.0f}, {0.0f, y}));
+        auto rowAccent = rowData.usesComsPlus ? ccColor3B{115, 255, 214} : ccColor3B{126, 152, 178};
+        m_messageRoot->addChild(rect({rowAccent.r, rowAccent.g, rowAccent.b, 150}, {2.0f, rowHeight - 9.0f}, {0.0f, y + 4.0f}));
+
+        auto icon = createIconNode(rowData.iconData);
+        icon->setAnchorPoint({0.5f, 0.5f});
+        icon->setPosition({isMobileLayout() ? 31.0f : 25.0f, y + rowHeight * 0.55f});
+        m_messageRoot->addChild(icon);
+
+        auto name = CCLabelBMFont::create(rowData.displayName.c_str(), "chatFont.fnt");
+        name->setAnchorPoint({0.0f, 0.5f});
+        auto nameScale = isMobileLayout() ? 0.56f : 0.42f;
+        auto textX = isMobileLayout() ? 66.0f : 54.0f;
+        name->setScale(nameScale);
+        name->setColor({224, 248, 255});
+        name->setPosition({textX, y + rowHeight * 0.66f});
+        name->limitLabelWidth(rootSize.width - textX - 96.0f, nameScale, 0.08f);
+        m_messageRoot->addChild(name);
+
+        auto badgeText = rowData.usesComsPlus ? "ComsPlus" : "Globed";
+        auto badge = CCLabelBMFont::create(badgeText, "chatFont.fnt");
+        badge->setAnchorPoint({1.0f, 0.5f});
+        auto badgeScale = isMobileLayout() ? 0.34f : 0.27f;
+        badge->setScale(badgeScale);
+        badge->setColor(rowData.usesComsPlus ? ccColor3B{132, 255, 220} : ccColor3B{164, 184, 202});
+        badge->setPosition({rootSize.width - 8.0f, y + rowHeight * 0.66f});
+        badge->limitLabelWidth(84.0f, badgeScale, 0.06f);
+        m_messageRoot->addChild(badge);
+
+        auto detailText = isMainMenuContext() ?
+            ("connected " + connectedFor(rowData.joinedAt) + " | active " + relativeTime(rowData.lastSeen) + " ago | " + std::to_string(rowData.messageCount) + " msg") :
+            (rowData.usesComsPlus ? "ComsPlus chat seen in this level" : "visible in current Globed level");
+        auto detail = CCLabelBMFont::create(detailText.c_str(), "chatFont.fnt");
+        detail->setAnchorPoint({0.0f, 0.5f});
+        auto detailScale = isMobileLayout() ? 0.38f : 0.30f;
+        detail->setScale(detailScale);
+        detail->setColor({154, 184, 205});
+        detail->setPosition({textX, y + rowHeight * 0.30f});
+        detail->limitLabelWidth(rootSize.width - textX - 10.0f, detailScale, 0.06f);
+        m_messageRoot->addChild(detail);
+
+        if (rowData.accountId > 0) {
+            m_messageHits.push_back({CCRectMake(0.0f, y, rootSize.width, rowHeight), rowData.accountId});
+        }
+        y -= rowHeight;
+    }
+}
+
+void ComsPlusChatOverlay::renderActivity() {
+    if (!m_messageRoot) return;
+    auto rootSize = m_messageRoot->getContentSize();
+    auto rows = activityRows();
+    float y = rootSize.height - 14.0f + m_listScroll;
+    auto rowHeight = isMobileLayout() ? 27.0f : 21.0f;
+
+    if (rows.empty()) {
+        auto empty = CCLabelBMFont::create("No activity yet", "chatFont.fnt");
+        empty->setAnchorPoint({0.5f, 0.5f});
+        empty->setScale(isMobileLayout() ? 0.46f : 0.36f);
+        empty->setColor({160, 190, 210});
+        empty->setPosition({rootSize.width * 0.5f, rootSize.height * 0.5f});
+        m_messageRoot->addChild(empty);
+        return;
+    }
+
+    for (auto const& row : rows) {
+        if (y - rowHeight < 0.0f) break;
+        if (y > rootSize.height + rowHeight) {
+            y -= rowHeight;
+            continue;
+        }
+        m_messageRoot->addChild(rect({8, 17, 30, 70}, {rootSize.width, rowHeight - 2.0f}, {0.0f, y - rowHeight + 2.0f}));
+        auto line = relativeTime(row.timestamp) + " ago  " + row.text;
+        auto label = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
+        label->setAnchorPoint({0.0f, 0.5f});
+        auto scale = isMobileLayout() ? 0.44f : 0.34f;
+        label->setScale(scale);
+        label->setColor({188, 218, 235});
+        label->setPosition({6.0f, y - rowHeight * 0.45f});
+        label->limitLabelWidth(rootSize.width - 12.0f, scale, 0.06f);
+        m_messageRoot->addChild(label);
+        y -= rowHeight;
+    }
+}
+
+void ComsPlusChatOverlay::renderCommands() {
+    if (!m_messageRoot) return;
+    auto rootSize = m_messageRoot->getContentSize();
+    auto commands = std::vector<std::string>{
+        "/ban \"User\" \"Reason\"",
+        "/tempban \"User\" [1h] \"Reason\"",
+        "/mute \"User\" \"Reason\"",
+        "/unmute \"User\"",
+        "/clear [Reason]",
+        "/report \"Reason\"",
+        "/block \"User\""
+    };
+
+    auto y = rootSize.height - 18.0f + m_listScroll;
+    auto rowHeight = isMobileLayout() ? 29.0f : 23.0f;
+    for (auto const& command : commands) {
+        if (y - rowHeight < 0.0f) break;
+        if (y > rootSize.height + rowHeight) {
+            y -= rowHeight;
+            continue;
+        }
+        m_messageRoot->addChild(rect({10, 23, 38, 88}, {rootSize.width, rowHeight - 3.0f}, {0.0f, y - rowHeight + 2.0f}));
+        m_messageRoot->addChild(rect(panelGlow(140.0f), {2.0f, rowHeight - 8.0f}, {0.0f, y - rowHeight + 5.0f}));
+
+        auto label = CCLabelBMFont::create(command.c_str(), "chatFont.fnt");
+        label->setAnchorPoint({0.0f, 0.5f});
+        auto scale = isMobileLayout() ? 0.46f : 0.36f;
+        label->setScale(scale);
+        label->setColor({207, 238, 255});
+        label->setPosition({9.0f, y - rowHeight * 0.45f});
+        label->limitLabelWidth(rootSize.width - 18.0f, scale, 0.06f);
+        m_messageRoot->addChild(label);
+        y -= rowHeight;
+    }
+}
+
+void ComsPlusChatOverlay::renderReports() {
+    if (!m_messageRoot) return;
+    auto rootSize = m_messageRoot->getContentSize();
+    if (m_reports.empty()) {
+        auto empty = CCLabelBMFont::create("No reports yet", "chatFont.fnt");
+        empty->setAnchorPoint({0.5f, 0.5f});
+        empty->setScale(isMobileLayout() ? 0.48f : 0.38f);
+        empty->setColor({165, 205, 226});
+        empty->setPosition({rootSize.width * 0.5f, rootSize.height * 0.5f});
+        m_messageRoot->addChild(empty);
+        return;
+    }
+
+    auto y = rootSize.height - 10.0f + m_listScroll;
+    auto rowHeight = isMobileLayout() ? 54.0f : 43.0f;
+    for (auto it = m_reports.rbegin(); it != m_reports.rend(); ++it) {
+        auto const& report = it->message;
+        if (y - rowHeight < 0.0f) break;
+        if (y > rootSize.height + rowHeight) {
+            y -= rowHeight;
+            continue;
+        }
+
+        m_messageRoot->addChild(rect({28, 12, 24, 96}, {rootSize.width, rowHeight - 4.0f}, {0.0f, y - rowHeight + 2.0f}));
+        m_messageRoot->addChild(rect({255, 83, 119, 155}, {2.0f, rowHeight - 10.0f}, {0.0f, y - rowHeight + 6.0f}));
+
+        auto title = sanitizeName(report.targetName);
+        if (title.empty()) title = "Unknown";
+        auto titleLine = "Report: " + title;
+        auto titleLabel = CCLabelBMFont::create(titleLine.c_str(), "chatFont.fnt");
+        titleLabel->setAnchorPoint({0.0f, 0.5f});
+        auto titleScale = isMobileLayout() ? 0.50f : 0.39f;
+        titleLabel->setScale(titleScale);
+        titleLabel->setColor({255, 214, 224});
+        titleLabel->setPosition({8.0f, y - rowHeight * 0.30f});
+        titleLabel->limitLabelWidth(rootSize.width - 16.0f, titleScale, 0.06f);
+        m_messageRoot->addChild(titleLabel);
+
+        auto detailLine = report.displayName + " | " + relativeTime(report.timestamp) + " ago | " + report.text;
+        auto detail = CCLabelBMFont::create(detailLine.c_str(), "chatFont.fnt");
+        detail->setAnchorPoint({0.0f, 0.5f});
+        auto detailScale = isMobileLayout() ? 0.39f : 0.31f;
+        detail->setScale(detailScale);
+        detail->setColor({205, 176, 190});
+        detail->setPosition({8.0f, y - rowHeight * 0.68f});
+        detail->limitLabelWidth(rootSize.width - 16.0f, detailScale, 0.06f);
+        m_messageRoot->addChild(detail);
+
+        m_actionHits.push_back({
+            CCRectMake(0.0f, y - rowHeight + 2.0f, rootSize.width, rowHeight - 4.0f),
+            ActionHitType::Report,
+            title,
+            report.targetAccountId
+        });
+        y -= rowHeight;
+    }
+}
+
+void ComsPlusChatOverlay::renderReportHistory() {
+    if (!m_messageRoot) return;
+    auto rootSize = m_messageRoot->getContentSize();
+    auto targetName = sanitizeName(m_selectedReportTarget);
+
+    auto header = "History: " + (targetName.empty() ? std::string("Unknown") : targetName);
+    auto headerLabel = CCLabelBMFont::create(header.c_str(), "chatFont.fnt");
+    headerLabel->setAnchorPoint({0.0f, 0.5f});
+    auto headerScale = isMobileLayout() ? 0.46f : 0.36f;
+    headerLabel->setScale(headerScale);
+    headerLabel->setColor({165, 224, 255});
+    headerLabel->setPosition({6.0f, rootSize.height - 10.0f});
+    headerLabel->limitLabelWidth(rootSize.width - 12.0f, headerScale, 0.06f);
+    m_messageRoot->addChild(headerLabel);
+
+    auto y = rootSize.height - (isMobileLayout() ? 36.0f : 30.0f) + m_listScroll;
+    auto rowHeight = isMobileLayout() ? 45.0f : 36.0f;
+    auto shown = 0;
+    for (auto it = m_history.rbegin(); it != m_history.rend(); ++it) {
+        auto const& message = it->message;
+        if (message.kind != ChatMessageKind::User && message.kind != ChatMessageKind::System) continue;
+        auto sameAccount = m_selectedReportAccountId != 0 && message.accountId == m_selectedReportAccountId;
+        auto sameName = !targetName.empty() && namesEqual(message.displayName, targetName);
+        if (!sameAccount && !sameName) continue;
+
+        if (y - rowHeight < 0.0f) break;
+        if (y > rootSize.height + rowHeight) {
+            y -= rowHeight;
+            continue;
+        }
+        ++shown;
+        m_messageRoot->addChild(rect({8, 18, 31, 82}, {rootSize.width, rowHeight - 3.0f}, {0.0f, y - rowHeight + 2.0f}));
+
+        auto nameLine = message.displayName + " | " + relativeTime(message.timestamp) + " ago";
+        auto name = CCLabelBMFont::create(nameLine.c_str(), "chatFont.fnt");
+        name->setAnchorPoint({0.0f, 0.5f});
+        auto nameScale = isMobileLayout() ? 0.43f : 0.34f;
+        name->setScale(nameScale);
+        name->setColor({139, 228, 255});
+        name->setPosition({7.0f, y - rowHeight * 0.30f});
+        name->limitLabelWidth(rootSize.width - 14.0f, nameScale, 0.06f);
+        m_messageRoot->addChild(name);
+
+        auto body = CCLabelBMFont::create(message.text.c_str(), "chatFont.fnt");
+        body->setAnchorPoint({0.0f, 0.5f});
+        auto bodyScale = isMobileLayout() ? 0.40f : 0.32f;
+        body->setScale(bodyScale);
+        body->setColor({225, 232, 238});
+        body->setPosition({7.0f, y - rowHeight * 0.68f});
+        body->limitLabelWidth(rootSize.width - 14.0f, bodyScale, 0.06f);
+        m_messageRoot->addChild(body);
+        y -= rowHeight;
+    }
+
+    if (shown == 0) {
+        auto empty = CCLabelBMFont::create("No saved messages for this user", "chatFont.fnt");
+        empty->setAnchorPoint({0.5f, 0.5f});
+        empty->setScale(isMobileLayout() ? 0.42f : 0.34f);
+        empty->setColor({165, 190, 205});
+        empty->setPosition({rootSize.width * 0.5f, rootSize.height * 0.5f});
+        m_messageRoot->addChild(empty);
+    }
+}
+
+void ComsPlusChatOverlay::renderBlocks() {
+    if (!m_messageRoot) return;
+    auto rootSize = m_messageRoot->getContentSize();
+    if (m_blocks.empty()) {
+        auto empty = CCLabelBMFont::create("No blocked users", "chatFont.fnt");
+        empty->setAnchorPoint({0.5f, 0.5f});
+        empty->setScale(isMobileLayout() ? 0.48f : 0.38f);
+        empty->setColor({165, 205, 226});
+        empty->setPosition({rootSize.width * 0.5f, rootSize.height * 0.5f});
+        m_messageRoot->addChild(empty);
+        return;
+    }
+
+    auto y = rootSize.height - 12.0f + m_listScroll;
+    auto rowHeight = isMobileLayout() ? 42.0f : 34.0f;
+    for (auto const& block : m_blocks) {
+        if (y - rowHeight < 0.0f) break;
+        if (y > rootSize.height + rowHeight) {
+            y -= rowHeight;
+            continue;
+        }
+        m_messageRoot->addChild(rect({10, 22, 36, 88}, {rootSize.width, rowHeight - 3.0f}, {0.0f, y - rowHeight + 2.0f}));
+        m_messageRoot->addChild(rect({76, 178, 255, 130}, {2.0f, rowHeight - 8.0f}, {0.0f, y - rowHeight + 5.0f}));
+
+        auto line = block.targetName + "  tap to unblock";
+        auto label = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
+        label->setAnchorPoint({0.0f, 0.5f});
+        auto scale = isMobileLayout() ? 0.48f : 0.38f;
+        label->setScale(scale);
+        label->setColor({211, 238, 255});
+        label->setPosition({8.0f, y - rowHeight * 0.48f});
+        label->limitLabelWidth(rootSize.width - 16.0f, scale, 0.06f);
+        m_messageRoot->addChild(label);
+
+        m_actionHits.push_back({
+            CCRectMake(0.0f, y - rowHeight + 2.0f, rootSize.width, rowHeight - 3.0f),
+            ActionHitType::Unblock,
+            block.targetName,
+            block.targetAccountId
+        });
+        y -= rowHeight;
     }
 }
 
@@ -1326,6 +2175,46 @@ bool ComsPlusChatOverlay::pointInPanelHeader(CCPoint const& point) const {
         {m_panelPosition.x, m_panelPosition.y + size.height - headerHeight},
         {size.width, headerHeight}
     );
+}
+
+bool ComsPlusChatOverlay::pointInTab(CCPoint const& point, ViewMode& mode) const {
+    if (!m_panelRoot || m_tabHits.empty()) return false;
+    auto local = m_panelRoot->convertToNodeSpace(point);
+    for (auto const& hit : m_tabHits) {
+        if (
+            local.x >= hit.rect.origin.x &&
+            local.x <= hit.rect.origin.x + hit.rect.size.width &&
+            local.y >= hit.rect.origin.y &&
+            local.y <= hit.rect.origin.y + hit.rect.size.height
+        ) {
+            mode = hit.mode;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ComsPlusChatOverlay::pointInMessageRoot(CCPoint const& point) const {
+    if (!m_messageRoot) return false;
+    auto local = m_messageRoot->convertToNodeSpace(point);
+    auto size = m_messageRoot->getContentSize();
+    return local.x >= 0.0f && local.x <= size.width && local.y >= 0.0f && local.y <= size.height;
+}
+
+std::optional<ComsPlusChatOverlay::ActionHit> ComsPlusChatOverlay::actionAt(CCPoint const& point) const {
+    if (!m_messageRoot) return std::nullopt;
+    auto local = m_messageRoot->convertToNodeSpace(point);
+    for (auto const& hit : m_actionHits) {
+        if (
+            local.x >= hit.rect.origin.x &&
+            local.x <= hit.rect.origin.x + hit.rect.size.width &&
+            local.y >= hit.rect.origin.y &&
+            local.y <= hit.rect.origin.y + hit.rect.size.height
+        ) {
+            return hit;
+        }
+    }
+    return std::nullopt;
 }
 
 CCPoint ComsPlusChatOverlay::clampedBubblePosition(CCPoint position) const {
