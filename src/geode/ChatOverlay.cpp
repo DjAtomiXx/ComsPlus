@@ -190,8 +190,8 @@ CCSize panelSize() {
         };
     }
     return {
-        std::min(448.0f, win.width - 12.0f),
-        std::min(254.0f, win.height - 16.0f)
+        std::min(520.0f, win.width - 12.0f),
+        std::min(300.0f, win.height - 16.0f)
     };
 }
 
@@ -1165,12 +1165,12 @@ CCNode* ComsPlusChatOverlay::createIconNode(std::string const& iconData) const {
     if (icon) {
         icon->setColor(colorFor(color1));
         icon->setSecondColor(colorFor(color2));
-        icon->setScale(isMobileLayout() ? 0.36f : 0.28f);
+        icon->setScale(isMobileLayout() ? 0.56f : 0.42f);
         return icon;
     }
 
     auto fallback = CCLabelBMFont::create("[]", "chatFont.fnt");
-    fallback->setScale(isMobileLayout() ? 0.58f : 0.46f);
+    fallback->setScale(isMobileLayout() ? 0.82f : 0.62f);
     return fallback;
 }
 
@@ -1188,7 +1188,7 @@ void ComsPlusChatOverlay::rebuild() {
         auto const& rendered = *it;
         if (!shouldDisplayMessage(rendered.message)) continue;
         if (rendered.message.kind == ChatMessageKind::System || rendered.message.kind == ChatMessageKind::Moderation) {
-            auto rowHeight = isMobileLayout() ? 15.0f : 12.0f;
+            auto rowHeight = isMobileLayout() ? 21.0f : 17.0f;
             if (y + rowHeight > rootSize.height) break;
 
             auto isModeration = rendered.message.kind == ChatMessageKind::Moderation;
@@ -1204,7 +1204,7 @@ void ComsPlusChatOverlay::rebuild() {
 
             auto label = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
             label->setAnchorPoint({0.0f, 0.5f});
-            auto systemScale = isMobileLayout() ? 0.32f : 0.26f;
+            auto systemScale = isMobileLayout() ? 0.43f : 0.34f;
             label->setScale(systemScale);
             label->setColor(isModeration ? ccColor3B{155, 224, 255} : ccColor3B{198, 153, 163});
             label->setPosition({6.0f, y + rowHeight * 0.5f});
@@ -1215,7 +1215,7 @@ void ComsPlusChatOverlay::rebuild() {
             continue;
         }
 
-        auto rowHeight = isMobileLayout() ? 38.0f : 32.0f;
+        auto rowHeight = isMobileLayout() ? 56.0f : 46.0f;
         if (y + rowHeight > rootSize.height) break;
 
         auto rowPhase = phase + static_cast<float>(index) * 0.45f;
@@ -1226,33 +1226,33 @@ void ComsPlusChatOverlay::rebuild() {
 
         auto icon = createIconNode(rendered.message.iconData);
         icon->setAnchorPoint({0.5f, 0.5f});
-        auto iconCenterX = isMobileLayout() ? 21.0f : 16.0f;
-        auto iconCenterY = y + rowHeight - (isMobileLayout() ? 13.0f : 11.0f);
+        auto iconCenterX = isMobileLayout() ? 30.0f : 22.0f;
+        auto iconCenterY = y + rowHeight - (isMobileLayout() ? 18.0f : 15.5f);
         icon->setPosition({iconCenterX, iconCenterY});
         m_messageRoot->addChild(icon);
 
         auto name = CCLabelBMFont::create(rendered.message.displayName.c_str(), "chatFont.fnt");
         name->setAnchorPoint({0.0f, 0.5f});
-        auto nameScale = isMobileLayout() ? 0.40f : 0.34f;
-        auto textScale = isMobileLayout() ? 0.34f : 0.30f;
-        auto textX = isMobileLayout() ? 46.0f : 35.0f;
+        auto nameScale = isMobileLayout() ? 0.57f : 0.46f;
+        auto textScale = isMobileLayout() ? 0.48f : 0.39f;
+        auto textX = isMobileLayout() ? 66.0f : 49.0f;
         name->setScale(nameScale);
         name->setColor(accent);
-        name->setPosition({textX, y + rowHeight - (isMobileLayout() ? 10.5f : 10.0f)});
-        name->limitLabelWidth(rootSize.width - textX - 54.0f, nameScale, 0.08f);
+        name->setPosition({textX, y + rowHeight - (isMobileLayout() ? 16.0f : 13.5f)});
+        name->limitLabelWidth(rootSize.width - textX - 62.0f, nameScale, 0.1f);
         m_messageRoot->addChild(name);
 
         if (hasDevBadge(rendered.message)) {
-            auto nameWidth = std::min(name->getScaledContentWidth(), rootSize.width - textX - 64.0f);
-            auto badgeX = textX + nameWidth + 6.0f;
-            auto badgeY = y + rowHeight - (isMobileLayout() ? 10.3f : 9.8f);
+            auto nameWidth = std::min(name->getScaledContentWidth(), rootSize.width - textX - 76.0f);
+            auto badgeX = textX + nameWidth + 8.0f;
+            auto badgeY = y + rowHeight - (isMobileLayout() ? 15.6f : 13.2f);
 
             auto badge = CCLabelBMFont::create("Dev", "chatFont.fnt");
             badge->setAnchorPoint({0.0f, 0.5f});
-            badge->setScale(isMobileLayout() ? 0.26f : 0.22f);
+            badge->setScale(isMobileLayout() ? 0.34f : 0.27f);
             badge->setColor({135, 226, 255});
             badge->setPosition({badgeX, badgeY});
-            badge->limitLabelWidth(28.0f, isMobileLayout() ? 0.26f : 0.22f, 0.08f);
+            badge->limitLabelWidth(40.0f, isMobileLayout() ? 0.34f : 0.27f, 0.1f);
             m_messageRoot->addChild(badge);
         }
 
@@ -1260,8 +1260,8 @@ void ComsPlusChatOverlay::rebuild() {
         text->setAnchorPoint({0.0f, 0.5f});
         text->setScale(textScale);
         text->setColor(messageBodyColor(rendered.message, rendered.local, rowPhase));
-        text->setPosition({textX, y + (isMobileLayout() ? 9.5f : 8.8f)});
-        text->limitLabelWidth(rootSize.width - textX - 10.0f, textScale, 0.055f);
+        text->setPosition({textX, y + (isMobileLayout() ? 15.0f : 12.0f)});
+        text->limitLabelWidth(rootSize.width - textX - 12.0f, textScale, 0.075f);
         m_messageRoot->addChild(text);
 
         if (rendered.message.accountId > 0) {

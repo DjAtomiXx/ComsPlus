@@ -6,7 +6,7 @@
   },
   "id": "exploited.comsplus",
   "name": "ComsPlus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "developer": "Exploited",
   "description": "Local privacy display names with level and main menu ComsPlus chat.",
   "dependencies": {
@@ -126,9 +126,9 @@
     "desktop-panel-width": {
       "type": "float",
       "name": "Desktop chat width",
-      "default": 460,
-      "min": 320,
-      "max": 580,
+      "default": 520,
+      "min": 360,
+      "max": 640,
       "control": {
         "slider": true,
         "slider-step": 8,
@@ -138,9 +138,9 @@
     "desktop-panel-height": {
       "type": "float",
       "name": "Desktop chat height",
-      "default": 280,
-      "min": 190,
-      "max": 340,
+      "default": 320,
+      "min": 230,
+      "max": 390,
       "control": {
         "slider": true,
         "slider-step": 6,

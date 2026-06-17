@@ -67,8 +67,8 @@ ComsPlusSettings readSettings() {
     settings.sendCooldownMs = static_cast<int>(settingOr<int64_t>("send-cooldown-ms", settings.sendCooldownMs));
     settings.maxChatMessages = static_cast<int>(settingOr<int64_t>("max-chat-messages", settings.maxChatMessages));
     settings.chatOpacity = std::clamp(settings.chatOpacity, 0.2f, 1.0f);
-    settings.desktopPanelWidth = std::clamp(settings.desktopPanelWidth, 320.0f, 580.0f);
-    settings.desktopPanelHeight = std::clamp(settings.desktopPanelHeight, 190.0f, 340.0f);
+    settings.desktopPanelWidth = std::clamp(settings.desktopPanelWidth, 360.0f, 640.0f);
+    settings.desktopPanelHeight = std::clamp(settings.desktopPanelHeight, 230.0f, 390.0f);
     settings.bubbleOpacity = std::clamp(settings.bubbleOpacity, 0.25f, 1.0f);
     settings.bubbleSize = std::clamp(settings.bubbleSize, 26.0f, 72.0f);
     settings.sendCooldownMs = std::clamp(settings.sendCooldownMs, 500, 10000);

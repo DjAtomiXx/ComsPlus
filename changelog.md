@@ -1,5 +1,13 @@
 # ComsPlus Changelog
 
+## 1.0.1
+
+Readability update.
+
+- Improved chat message readability.
+- Improved chat icon and name sizing.
+- Fixed various bugs.
+
 ## 1.0 Stable
 
 Stable release.

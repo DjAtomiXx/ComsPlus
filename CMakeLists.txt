@@ -10,7 +10,7 @@ else()
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 endif()
 
-project(ComsPlus VERSION 1.0.0 LANGUAGES CXX)
+project(ComsPlus VERSION 1.0.1 LANGUAGES CXX)
 
 option(COMSPLUS_BUILD_TESTS "Build ComsPlus unit tests" OFF)
 
